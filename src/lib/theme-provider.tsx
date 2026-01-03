@@ -35,14 +35,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         document.documentElement.classList.add('dark')
       }
     } else {
-      const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      const initialTheme = systemDark ? 'dark' : 'light'
+      const initialTheme: Theme = 'light'
       setThemeState(initialTheme)
       document.cookie = `theme=${initialTheme}; path=/; max-age=31536000`
       localStorage.setItem('theme', initialTheme)
-      if (systemDark) {
-        document.documentElement.classList.add('dark')
-      }
+      document.documentElement.classList.remove('dark')
     }
   }, [])
 
