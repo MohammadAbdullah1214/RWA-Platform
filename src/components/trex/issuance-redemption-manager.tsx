@@ -51,8 +51,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { AssetInfo, RedemptionRequest, TokenInfo } from "@/lib/trex-client";
-import type { TokenInfoFromFactory } from "@/types/trex-contracts";
+import type { AssetInfo, RedemptionRequest } from "@/lib/trex-client";
+import type { TokenInfo, TokenInfoFromFactory } from "@/types/trex-contracts";
 import type { PermissionsState } from "@/hooks/use-permissions";
 
 interface IssuanceRedemptionManagerProps {
