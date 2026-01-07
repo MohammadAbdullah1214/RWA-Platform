@@ -210,6 +210,14 @@ export default function AdminIdentitiesPage() {
         </div>
       </div>
 
+      <Alert className="mb-6">
+        <AlertDescription>
+          Identity Registry owner can whitelist wallets. Claim Topics owner can
+          update required topics. Trusted issuers can add claims for authorized
+          topics.
+        </AlertDescription>
+      </Alert>
+
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-6">
         <Card className="bg-white rounded-2xl">

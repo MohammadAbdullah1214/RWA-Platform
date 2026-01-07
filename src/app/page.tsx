@@ -22,6 +22,10 @@ export default function Page() {
         {/* Placeholder for the Dashboard content which will be implemented next */}
         <div className="p-8">
           <h1 className="text-3xl font-semibold mb-6">Market Overview</h1>
+          <div className="mb-6 rounded-2xl border border-slate-200/70 bg-white/70 p-4 text-sm text-slate-700 shadow-sm">
+            Investors can browse markets and assets here. Admin and issuer
+            actions live under Token Admin and Issuance.
+          </div>
           <div className="flex flex-row items-center justify-between gap-2">
             <StatsCard
               heading="Distibuted Asset Value"

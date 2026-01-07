@@ -35,6 +35,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/seperator";
 import { useWallet } from "@/hooks/use-wallet";
+import { usePermissions } from "@/hooks/use-permissions";
 import { UserIdentity, CLAIM_TOPIC_NAMES } from "@/types/trex-contracts";
 import { toast } from "sonner";
 
@@ -48,11 +49,16 @@ export function IdentityManager({
   onUpdate,
 }: IdentityManagerProps) {
   const { trexClient, address } = useWallet();
+  const { permissions } = usePermissions({
+    trexClient,
+    walletAddress: address,
+  });
   const [isCreatingId, setIsCreatingId] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [country, setCountry] = useState("");
   const [issuerTopics, setIssuerTopics] = useState<number[] | null>(null);
   const canCreateOnchainId = !!issuerTopics?.includes(1);
+  const canRegisterIdentity = !!permissions.isIdentityRegistryOwner;
 
   // Check if current wallet is a trusted issuer
   useEffect(() => {
@@ -113,6 +119,11 @@ export function IdentityManager({
   const handleRegisterIdentity = async () => {
     if (!trexClient || !address) {
       toast.error("Please connect your wallet first");
+      return;
+    }
+
+    if (!canRegisterIdentity) {
+      toast.error("Only the Identity Registry owner can register identities");
       return;
     }
 
@@ -279,27 +290,36 @@ export function IdentityManager({
               </div>
             ) : userIdentity?.onchainIdAddress ? (
               <div className="flex items-center gap-2 mt-2">
-                <Input
-                  placeholder="US"
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                  className="flex-1 bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
-                  maxLength={2}
-                />
-                <Button
-                  size="sm"
-                  onClick={handleRegisterIdentity}
-                  disabled={isRegistering || !country}
-                >
-                  {isRegistering ? (
-                    <>
-                      <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                      Registering...
-                    </>
-                  ) : (
-                    "Register"
-                  )}
-                </Button>
+                {canRegisterIdentity ? (
+                  <>
+                    <Input
+                      placeholder="US"
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      className="flex-1 bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
+                      maxLength={2}
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleRegisterIdentity}
+                      disabled={isRegistering || !country}
+                    >
+                      {isRegistering ? (
+                        <>
+                          <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                          Registering...
+                        </>
+                      ) : (
+                        "Register"
+                      )}
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Identity registry registration is handled by the platform
+                    owner.
+                  </p>
+                )}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground mt-1">

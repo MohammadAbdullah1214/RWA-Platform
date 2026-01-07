@@ -99,9 +99,13 @@ export function Header() {
           <Bell className="h-5 w-5" />
         </button>
 
-        <button className="p-2 rounded-full hover:bg-gray-100 text-[#CBA135] border border-[#CBA135]/20">
+        <Link
+          href="/issuers"
+          className="p-2 rounded-full hover:bg-gray-100 text-[#CBA135] border border-[#CBA135]/20"
+          aria-label="Issuer portfolio"
+        >
           <User className="h-5 w-5" />
-        </button>
+        </Link>
 
         <WalletConnectButton />
       </div>

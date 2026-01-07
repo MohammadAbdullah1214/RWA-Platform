@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useWallet } from "@/hooks/use-wallet";
 import {
@@ -35,6 +35,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   CheckCircle2,
   XCircle,
   Clock,
@@ -44,7 +51,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { RedemptionRequest } from "@/lib/trex-client";
+import type { AssetInfo, RedemptionRequest, TokenInfo } from "@/lib/trex-client";
+import type { TokenInfoFromFactory } from "@/types/trex-contracts";
 import type { PermissionsState } from "@/hooks/use-permissions";
 
 interface IssuanceRedemptionManagerProps {
@@ -74,9 +82,25 @@ export function IssuanceRedemptionManager({
     issuer: string;
     controller: string;
   } | null>(null);
+  const [factoryAssetId, setFactoryAssetId] = useState<number | null>(null);
+  const [factoryToken, setFactoryToken] = useState<TokenInfoFromFactory | null>(
+    null
+  );
+  const [tokenAssets, setTokenAssets] = useState<AssetInfo[]>([]);
+  const [assetContextLoading, setAssetContextLoading] = useState(false);
+  const [assetContextError, setAssetContextError] = useState<string | null>(null);
+  const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
+  const [issuerBalance, setIssuerBalance] = useState<string>("0");
+  const [viewerBalance, setViewerBalance] = useState<string>("0");
+  const [lastIssuance, setLastIssuance] = useState<{
+    requestId: number;
+    recipient: string;
+    amount: string;
+    txHash: string;
+  } | null>(null);
 
   // Request redemption form
-  const [assetId, setAssetId] = useState("1");
+  const [assetId, setAssetId] = useState("1");  
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
 
@@ -87,7 +111,48 @@ export function IssuanceRedemptionManager({
 
   useEffect(() => {
     loadData();
+    loadAssetContext();
   }, [trexClient, tokenContract]);
+
+  useEffect(() => {
+    if (!trexClient || !tokenContract) {
+      setTokenInfo(null);
+      setIssuerBalance("0");
+      setViewerBalance("0");
+      return;
+    }
+
+    const loadBalances = async () => {
+      try {
+        const info = await trexClient.getTokenInfoForContract(tokenContract);
+        setTokenInfo(info);
+
+        if (roles?.issuer) {
+          const issuerBal = await trexClient.getBalanceForToken(
+            tokenContract,
+            roles.issuer
+          );
+          setIssuerBalance(issuerBal);
+        } else {
+          setIssuerBalance("0");
+        }
+
+        if (address) {
+          const viewerBal = await trexClient.getBalanceForToken(
+            tokenContract,
+            address
+          );
+          setViewerBalance(viewerBal);
+        } else {
+          setViewerBalance("0");
+        }
+      } catch (error) {
+        console.error("Failed to load token balances:", error);
+      }
+    };
+
+    loadBalances();
+  }, [trexClient, tokenContract, roles?.issuer, address]);
 
   const loadData = async () => {
     if (!trexClient || !tokenContract) return;
@@ -109,6 +174,110 @@ export function IssuanceRedemptionManager({
     } catch (error) {
       console.error("Failed to load data:", error);
       toast.error("Failed to load requests");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAssetContext = async () => {
+    if (!trexClient || !tokenContract) return;
+
+    try {
+      setAssetContextLoading(true);
+      setAssetContextError(null);
+
+      const rawFactoryId = await trexClient
+        .getAssetIdByContract(tokenContract)
+        .catch(() => null);
+      const factoryId =
+        rawFactoryId &&
+        typeof rawFactoryId === "object" &&
+        "asset_id" in rawFactoryId
+          ? Number((rawFactoryId as { asset_id: number }).asset_id)
+          : rawFactoryId;
+      setFactoryAssetId(factoryId);
+
+      let token: TokenInfoFromFactory | null = null;
+      if (factoryId) {
+        token = await trexClient.getTokenByAssetId(factoryId).catch(() => null);
+        setFactoryToken(token);
+      } else {
+        setFactoryToken(null);
+      }
+
+      const assets = await trexClient
+        .getAllAssets(undefined, 25, tokenContract)
+        .catch(() => []);
+      setTokenAssets(assets);
+
+      if (assets.length > 0) {
+        const match = token
+          ? assets.find((asset) => asset.referenceId === token.reference_id)
+          : undefined;
+        const selected = match || assets[0];
+        setAssetId(selected.id.toString());
+        setIssueAssetId(selected.id.toString());
+      } else if (factoryId) {
+        setAssetContextError(
+          "This token contract has no asset entry yet. Create one before issuing."
+        );
+      }
+    } catch (error) {
+      console.error("Failed to load asset context:", error);
+      setAssetContextError("Failed to load asset details for this token.");
+    } finally {
+      setAssetContextLoading(false);
+    }
+  };
+
+  const parseFactoryMetadata = (metadata?: string | null) => {
+    if (!metadata) return {};
+    try {
+      return JSON.parse(metadata) as Record<string, any>;
+    } catch {
+      return {};
+    }
+  };
+
+  const handleCreateTokenAsset = async () => {
+    if (!trexClient || !tokenContract || !factoryToken) return;
+
+    try {
+      setLoading(true);
+      toast.loading("Creating token asset entry...");
+
+      const metadata = parseFactoryMetadata(factoryToken.metadata);
+      const assetData = {
+        referenceId: factoryToken.reference_id,
+        description: factoryToken.description,
+        legalOwner: factoryToken.legal_owner,
+        name: metadata.name || factoryToken.name,
+        type: metadata.type || "real-estate",
+        location: metadata.location || "unknown",
+        underlyingValue: metadata.underlyingValue || 0,
+        currency: metadata.currency || "USD",
+      };
+
+      const result = await trexClient.createAsset(assetData, tokenContract);
+
+      toast.dismiss();
+      toast.success("Token asset created", {
+        description: `Asset ID ${result.assetId} - Tx: ${result.txHash.substring(
+          0,
+          8
+        )}...`,
+      });
+
+      setAssetId(result.assetId.toString());
+      setIssueAssetId(result.assetId.toString());
+      await loadAssetContext();
+      onUpdate?.();
+    } catch (error: any) {
+      toast.dismiss();
+      console.error("Create asset failed:", error);
+      toast.error("Create asset failed", {
+        description: error.message || "Unable to create token asset",
+      });
     } finally {
       setLoading(false);
     }
@@ -242,11 +411,19 @@ export function IssuanceRedemptionManager({
         )}...`,
       });
 
+      setLastIssuance({
+        requestId: txHash.requestId,
+        recipient: issueRecipient,
+        amount: issueAmount,
+        txHash: txHash.txHash,
+      });
+
       // Reset form
       setIssueRecipient("");
       setIssueAmount("");
 
       await loadData();
+      await loadAssetContext();
       onUpdate?.();
     } catch (error: any) {
       toast.dismiss();
@@ -274,6 +451,9 @@ export function IssuanceRedemptionManager({
   const isIssuer =
     permissions?.isTokenIssuer ??
     (roles && address && roles.issuer.toLowerCase() === address.toLowerCase());
+  const isOwner =
+    permissions?.isTokenOwner ??
+    (roles && address && roles.owner.toLowerCase() === address.toLowerCase());
   const isController =
     permissions?.isTokenController ??
     (roles &&
@@ -283,6 +463,7 @@ export function IssuanceRedemptionManager({
 
   const pendingRequests = requests.filter((r) => !r.approved);
   const approvedRequests = requests.filter((r) => r.approved);
+  const totalSupply = useMemo(() => tokenInfo?.total_supply || "0", [tokenInfo]);
 
   return (
     <motion.div
@@ -303,16 +484,16 @@ export function IssuanceRedemptionManager({
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="redemption" className="w-full">
-            <TabsList className="w-full grid grid-cols-3 p-1 bg-[#F1F2F4] rounded-xl h-auto">
+            <TabsList className="w-fit grid grid-cols-3 p-1 bg-[#F1F2F4] rounded-xl h-auto">
               <TabsTrigger
                 value="redemption"
-                className="rounded-lg data-[state=active]:bg-linear-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-2.5"
+                className="rounded-lg data-[state=active]:bg-linear-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
               >
                 Request Redemption
               </TabsTrigger>
               <TabsTrigger
                 value="pending"
-                className="rounded-lg data-[state=active]:bg-linear-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-2.5"
+                className="rounded-lg data-[state=active]:bg-linear-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
               >
                 Pending Requests{" "}
                 {pendingRequests.length > 0 && (
@@ -326,7 +507,7 @@ export function IssuanceRedemptionManager({
               </TabsTrigger>
               <TabsTrigger
                 value="issue"
-                className="rounded-lg data-[state=active]:bg-linear-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-2.5"
+                className="rounded-lg data-[state=active]:bg-linear-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
               >
                 Issue Tokens
               </TabsTrigger>
@@ -345,8 +526,29 @@ export function IssuanceRedemptionManager({
 
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="assetId">Asset ID</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="assetId">Token Asset ID</Label>
+                  {tokenAssets.length > 0 ? (
+                    <Select
+                      value={assetId}
+                      onValueChange={setAssetId}
+                      disabled={loading}
+                    >
+                      <SelectTrigger id="assetId" className="h-11">
+                        <SelectValue placeholder="Select token asset" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tokenAssets.map((asset) => (
+                          <SelectItem
+                            key={asset.id}
+                            value={asset.id.toString()}
+                          >
+                            {asset.id} - {asset.referenceId || "Asset"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
                     <Input
                       id="assetId"
                       type="number"
@@ -356,7 +558,8 @@ export function IssuanceRedemptionManager({
                       disabled={loading}
                       className="bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
                     />
-                  </div>
+                  )}
+                </div>
                   <div className="space-y-2">
                     <Label htmlFor="amount">Amount</Label>
                     <Input
@@ -450,7 +653,7 @@ export function IssuanceRedemptionManager({
                             {request.amount}
                           </TableCell>
                           <TableCell className="max-w-50 truncate">
-                            {request.reason || "—"}
+                            {request.reason || "N/A"}
                           </TableCell>
                           <TableCell>
                             <Badge variant="secondary">
@@ -602,26 +805,125 @@ export function IssuanceRedemptionManager({
                 </Alert>
               )}
 
+              {assetContextError && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>{assetContextError}</AlertDescription>
+                </Alert>
+              )}
+
               <Alert>
                 <ArrowUpCircle className="h-4 w-4" />
                 <AlertDescription>
-                  Issue new tokens for a tokenized asset. The recipient must
-                  have a verified identity and meet compliance requirements.
+                  Request issuance to mint new tokens. The controller must
+                  approve the request before tokens are minted on-chain.
                 </AlertDescription>
               </Alert>
 
               <div className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-xl border border-slate-200/70 bg-white px-4 py-3 text-sm">
+                    <div className="text-slate-500">Total minted supply</div>
+                    <div className="font-semibold">{totalSupply}</div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200/70 bg-white px-4 py-3 text-sm">
+                    <div className="text-slate-500">Issuer wallet balance</div>
+                    <div className="font-semibold">{issuerBalance}</div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200/70 bg-white px-4 py-3 text-sm">
+                    <div className="text-slate-500">Your wallet balance</div>
+                    <div className="font-semibold">{viewerBalance}</div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200/70 bg-white px-4 py-3 text-sm space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Token Contract</span>
+                    <span className="font-mono text-xs">
+                      {tokenContract.substring(0, 18)}...
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Factory Asset ID</span>
+                    <span>{factoryAssetId ?? "N/A"}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Token Asset Count</span>
+                    <span>
+                      {assetContextLoading ? "Loading..." : tokenAssets.length}
+                    </span>
+                  </div>
+                  {tokenAssets.length > 0 && (
+                    <div className="flex items-start justify-between gap-3 text-xs text-slate-500">
+                      <span className="shrink-0">Token Asset IDs</span>
+                      <span className="text-right">
+                        {tokenAssets.map((asset) => asset.id).join(", ")}
+                      </span>
+                    </div>
+                  )}
+                  {tokenAssets.length === 0 && isOwner && factoryToken && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCreateTokenAsset}
+                      disabled={loading || assetContextLoading}
+                    >
+                      Create token asset entry
+                    </Button>
+                  )}
+                  {tokenAssets.length === 0 && !isOwner && (
+                    <div className="text-xs text-slate-500">
+                      Token owner must create the token asset entry before
+                      issuance can start.
+                    </div>
+                  )}
+                </div>
+
+                {lastIssuance && (
+                  <Alert>
+                    <AlertDescription>
+                      Last issuance request: #{lastIssuance.requestId} for{" "}
+                      {lastIssuance.amount} tokens to{" "}
+                      {lastIssuance.recipient.substring(0, 12)}... (pending
+                      controller approval). Tx:{" "}
+                      {lastIssuance.txHash.substring(0, 8)}...
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 <div className="space-y-2">
-                  <Label htmlFor="issueAssetId">Asset ID</Label>
-                  <Input
-                    id="issueAssetId"
-                    type="number"
-                    value={issueAssetId}
-                    onChange={(e) => setIssueAssetId(e.target.value)}
-                    placeholder="1"
-                    disabled={loading || !isIssuer}
-                    className="bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
-                  />
+                  <Label htmlFor="issueAssetId">Token Asset ID</Label>
+                  {tokenAssets.length > 0 ? (
+                    <Select
+                      value={issueAssetId}
+                      onValueChange={setIssueAssetId}
+                      disabled={loading || !isIssuer}
+                    >
+                      <SelectTrigger id="issueAssetId" className="h-11">
+                        <SelectValue placeholder="Select token asset" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tokenAssets.map((asset) => (
+                          <SelectItem
+                            key={asset.id}
+                            value={asset.id.toString()}
+                          >
+                            {asset.id} - {asset.referenceId || "Asset"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id="issueAssetId"
+                      type="number"
+                      value={issueAssetId}
+                      onChange={(e) => setIssueAssetId(e.target.value)}
+                      placeholder="1"
+                      disabled={loading || !isIssuer}
+                      className="bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
+                    />
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -659,12 +961,12 @@ export function IssuanceRedemptionManager({
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Issuing...
+                      Submitting...
                     </>
                   ) : (
                     <>
                       <ArrowUpCircle className="mr-2 h-4 w-4" />
-                      Issue Tokens
+                      Request Issuance
                     </>
                   )}
                 </Button>

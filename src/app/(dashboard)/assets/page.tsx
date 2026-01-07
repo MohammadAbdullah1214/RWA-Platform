@@ -23,6 +23,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -245,6 +246,13 @@ export default function AssetsPage() {
             </Button>
           </div>
         </div>
+
+        <Alert className="mb-4">
+          <AlertDescription>
+            Investors can browse assets and open details. Token admins manage
+            issuance and compliance on the Issuance and Compliance pages.
+          </AlertDescription>
+        </Alert>
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2">

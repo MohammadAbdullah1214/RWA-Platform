@@ -17,6 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { IssuanceForm } from "@/components/rwa/issuance-form";
@@ -142,6 +143,13 @@ export default function IssuancePage() {
             Quick Issue
           </Button>
         </div>
+
+        <Alert>
+          <AlertDescription>
+            Factory admin creates new asset tokens here. Issuers mint and
+            distribute tokens from the Token Admin page after issuance.
+          </AlertDescription>
+        </Alert>
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

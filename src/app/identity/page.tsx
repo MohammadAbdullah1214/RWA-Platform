@@ -115,6 +115,14 @@ export default function IdentityPage() {
         </div>
       </div>
 
+      <Alert className="mb-6">
+        <AlertDescription>
+          Investors submit KYC applications here. KYC providers add claims and
+          create OnchainIDs. Identity Registry owners register verified wallets
+          before trading is enabled.
+        </AlertDescription>
+      </Alert>
+
       {/* Error Alert */}
       {error && (
         <Alert variant="destructive" className="mb-6">
@@ -196,7 +204,7 @@ export default function IdentityPage() {
         {/* Left Column: KYC Application or Identity Status */}
         <div className="space-y-4">
           {/* KYC Application Form */}
-          {address && (
+          {address && !isVerified && kycApplication?.status !== "approved" && (
             <KycApplicationForm
               walletAddress={address}
               existingApplication={kycApplication}

@@ -17,6 +17,7 @@ const menuItems = [
       { name: "KYC Status", href: "/identity" },
       { name: "Identity Management", href: "/admin/identities" },
       { name: "KYC Provider", href: "/kyc-provider" },
+      { name: "Token Admin", href: "/token-admin" },
       { name: "Compliance", href: "/compliance" },
       { name: "Issuance", href: "/issuance" },
     ],
@@ -31,6 +32,7 @@ export function Sidebar() {
     canSeeCompliance,
     canSeeIssuance,
     canSeeKycProvider,
+    canSeeAdminTab,
   } = usePermissions({ trexClient, walletAddress: address });
 
   const visibleItems = menuItems.map((section) => ({
@@ -38,6 +40,7 @@ export function Sidebar() {
     items: section.items.filter((item) => {
       if (item.href === "/admin/identities") return canSeeAdminIdentities;
       if (item.href === "/kyc-provider") return canSeeKycProvider;
+      if (item.href === "/token-admin") return canSeeAdminTab;
       if (item.href === "/compliance") return canSeeCompliance;
       if (item.href === "/issuance") return canSeeIssuance;
       return true;
@@ -110,8 +113,10 @@ export function Sidebar() {
             src="/footer-cta-bgimage.png"
             alt="CTA Background"
             fill
+            sizes="(max-width: 1024px) 0px, 280px"
             className="object-cover rounded-2xl"
-            priority={false}
+            priority
+            loading="eager"
           />
 
           {/* Overlay for better text readability */}

@@ -42,7 +42,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 
 export default function CompliancePage() {
   const { address, trexClient, connectKeplr, isConnecting } = useWallet();
-  const { canSeeCompliance, loading: permissionsLoading } = usePermissions({
+  const { permissions, loading: permissionsLoading } = usePermissions({
     trexClient,
     walletAddress: address,
   });
@@ -104,7 +104,7 @@ export default function CompliancePage() {
     );
   }
 
-  if (!permissionsLoading && !canSeeCompliance) {
+  if (!permissionsLoading && !permissions.isComplianceOwner) {
     return (
       <div className="space-y-6 p-8 glass-panel rounded-[22px]">
         <Alert variant="destructive">
@@ -141,6 +141,14 @@ export default function CompliancePage() {
             Export Report
           </Button>
         </div>
+
+        <Alert>
+          <AlertDescription>
+            Compliance owner configures transfer restrictions and reviews asset
+            compliance. Other roles should use the KYC Provider and Identity
+            Management pages.
+          </AlertDescription>
+        </Alert>
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -303,7 +311,7 @@ export default function CompliancePage() {
                                 ? "bg-yellow-500"
                                 : status === "non-compliant"
                                 ? "bg-red-500"
-                                : "bg-blue-500"
+                                : "bg-blue-500" 
                             }`}
                           />
                         </div>

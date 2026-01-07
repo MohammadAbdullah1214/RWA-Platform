@@ -22,6 +22,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -137,6 +138,13 @@ export default function AssetDetailPage({
           </Badge>
         </div>
       </motion.div>
+
+      <Alert className="mb-6">
+        <AlertDescription>
+          Investors can review asset details and trade. Token admins manage
+          issuance and compliance from the Token Admin page.
+        </AlertDescription>
+      </Alert>
 
       {/* Key Metrics */}
       <div className="grid gap-2 md:grid-cols-4 mb-6">

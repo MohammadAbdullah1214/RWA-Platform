@@ -52,16 +52,41 @@ export function AdminPanel({
   permissions,
   onUpdate,
 }: AdminPanelProps) {
-  const { address } = useWallet();
+  const { address, trexClient } = useWallet();
+  const [isTirOwner, setIsTirOwner] = useState(false);
   const canMint = !!permissions?.isTokenIssuer;
   const canFreeze = !!(permissions?.isTokenOwner || permissions?.isTokenAgent);
   const canPause = !!permissions?.isTokenOwner;
   const canManageAgents = !!permissions?.isTokenOwner;
-  const canManageIssuers = !!permissions?.isFactoryAdmin;
+  const canManageIssuers = isTirOwner;
   const canShowAnyTab =
     canMint || canFreeze || canPause || canManageAgents || canManageIssuers;
   const tabCount = [canMint, canFreeze, canPause, canManageAgents, canManageIssuers]
     .filter(Boolean).length;
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadTirOwner = async () => {
+      if (!trexClient || !address) {
+        setIsTirOwner(false);
+        return;
+      }
+
+      try {
+        const owner = await trexClient.getTirOwner();
+        if (!isMounted) return;
+        setIsTirOwner(!!owner && owner.toLowerCase() === address.toLowerCase());
+      } catch (error) {
+        if (!isMounted) return;
+        setIsTirOwner(false);
+      }
+    };
+
+    loadTirOwner();
+    return () => {
+      isMounted = false;
+    };
+  }, [trexClient, address]);
 
   return (
     <Card>
@@ -71,7 +96,7 @@ export function AdminPanel({
           Admin Panel
         </CardTitle>
         <CardDescription>
-          Token management and compliance administration (owner only)
+          Role-restricted token management and compliance administration
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

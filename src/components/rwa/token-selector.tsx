@@ -24,8 +24,9 @@ export function TokenSelector({ selectedTokenContract, onSelect, className }: To
 
   return (
     <Select
-      value={selectedTokenContract || undefined}
+      value={selectedTokenContract ?? ""}
       onValueChange={(value) => {
+        if (!value) return;
         const asset = assets.find((item) => item.tokenContractAddress === value);
         if (asset) {
           onSelect(asset.tokenContractAddress, asset.id, asset.symbol);
