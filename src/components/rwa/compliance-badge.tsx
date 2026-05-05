@@ -1,47 +1,57 @@
-'use client';
+"use client";
 
-import { motion } from 'framer-motion';
-import { CheckCircle, XCircle, Clock, AlertTriangle, Shield } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { motion } from "framer-motion";
+import {
+  CheckCircle,
+  XCircle,
+  Clock,
+  AlertTriangle,
+  Shield,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 interface ComplianceBadgeProps {
-  status: 'compliant' | 'pending' | 'non-compliant' | 'under-review';
+  status: "compliant" | "pending" | "non-compliant" | "under-review";
   showIcon?: boolean;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
   animated?: boolean;
 }
 
-export function ComplianceBadge({ 
-  status, 
-  showIcon = true, 
-  size = 'md',
-  animated = true 
+export function ComplianceBadge({
+  status,
+  showIcon = true,
+  size = "md",
+  animated = true,
 }: ComplianceBadgeProps) {
   const statusConfig = {
     compliant: {
       icon: CheckCircle,
-      text: 'Compliant',
-      className: 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800',
-      iconClassName: 'text-green-600 dark:text-green-400',
+      text: "Compliant",
+      className:
+        "bg-gradient-to-br from-emerald-500/15 to-emerald-600/15 text-emerald-700 border-2 border-emerald-300 shadow-[0_2px_8px_rgba(16,185,129,0.15)]",
+      iconClassName: "text-emerald-600",
     },
     pending: {
       icon: Clock,
-      text: 'Pending Review',
-      className: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800',
-      iconClassName: 'text-yellow-600 dark:text-yellow-400',
+      text: "Pending Review",
+      className:
+        "bg-gradient-to-br from-amber-500/15 to-amber-600/15 text-amber-700 border-2 border-amber-300 shadow-[0_2px_8px_rgba(245,158,11,0.15)]",
+      iconClassName: "text-amber-600",
     },
-    'non-compliant': {
+    "non-compliant": {
       icon: XCircle,
-      text: 'Non-Compliant',
-      className: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800',
-      iconClassName: 'text-red-600 dark:text-red-400',
+      text: "Non-Compliant",
+      className:
+        "bg-gradient-to-br from-red-500/15 to-red-600/15 text-red-700 border-2 border-red-300 shadow-[0_2px_8px_rgba(220,38,38,0.15)]",
+      iconClassName: "text-red-600",
     },
-    'under-review': {
+    "under-review": {
       icon: AlertTriangle,
-      text: 'Under Review',
-      className: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800',
-      iconClassName: 'text-blue-600 dark:text-blue-400',
+      text: "Under Review",
+      className:
+        "bg-gradient-to-br from-blue-500/15 to-blue-600/15 text-blue-700 border-2 border-blue-300 shadow-[0_2px_8px_rgba(37,99,235,0.15)]",
+      iconClassName: "text-blue-600",
     },
   };
 
@@ -49,9 +59,9 @@ export function ComplianceBadge({
   const Icon = config.icon;
 
   const sizeClasses = {
-    sm: 'px-2 py-0.5 text-xs',
-    md: 'px-3 py-1 text-sm',
-    lg: 'px-4 py-1.5 text-base',
+    sm: "px-2 py-0.5 text-xs",
+    md: "px-3 py-1 text-sm",
+    lg: "px-4 py-1.5 text-base",
   };
 
   return (
@@ -65,21 +75,25 @@ export function ComplianceBadge({
       <Badge
         variant="outline"
         className={cn(
-          'inline-flex items-center gap-1.5 font-medium',
+          "inline-flex items-center gap-1.5 font-medium",
           config.className,
           sizeClasses[size]
         )}
       >
         {showIcon && (
           <motion.div
-            animate={status === 'pending' ? { rotate: [0, 360] } : {}}
-            transition={status === 'pending' ? { duration: 2, repeat: Infinity, ease: 'linear' } : {}}
+            animate={status === "pending" ? { rotate: [0, 360] } : {}}
+            transition={
+              status === "pending"
+                ? { duration: 2, repeat: Infinity, ease: "linear" }
+                : {}
+            }
           >
-            <Icon className={cn('h-3.5 w-3.5', config.iconClassName)} />
+            <Icon className={cn("h-3.5 w-3.5", config.iconClassName)} />
           </motion.div>
         )}
         <span>{config.text}</span>
-        {status === 'compliant' && (
+        {status === "compliant" && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -110,7 +124,7 @@ export function ComplianceStatus({
   return (
     <div className="space-y-2">
       <ComplianceBadge status={status} {...badgeProps} />
-      
+
       {(lastChecked || checkedBy || requirements.length > 0) && (
         <div className="space-y-1 text-xs text-muted-foreground">
           {lastChecked && (

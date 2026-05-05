@@ -3,14 +3,12 @@
 import { useState, useEffect, useMemo } from "react";
 import { Bell, User, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { useWallet } from "@/hooks/use-wallet";
-import { useAssets } from "@/hooks/use-asets";
+import { useAssetsContext } from "@/contexts/assets-context";
 import { WalletConnectButton } from "@/components/wallet/wallet-connect-button";
 import Link from "next/link";
 
 export function Header() {
-  const { address: walletAddress, trexClient } = useWallet();
-  const { assets } = useAssets({ trexClient, walletAddress });
+  const { assets } = useAssetsContext();
   const [searchQuery, setSearchQuery] = useState("");
   const [showResults, setShowResults] = useState(false);
 
@@ -25,7 +23,7 @@ export function Header() {
           asset.name.toLowerCase().includes(query) ||
           asset.description.toLowerCase().includes(query) ||
           asset.location.toLowerCase().includes(query) ||
-          asset.symbol.toLowerCase().includes(query)
+          asset.symbol.toLowerCase().includes(query),
       )
       .slice(0, 5); // Limit to 5 results
   }, [assets, searchQuery]);
@@ -40,13 +38,13 @@ export function Header() {
   }, [showResults]);
 
   return (
-    <header className="w-full h-20 flex flex-row items-center justify-between px-8 mt-5 top-0 rounded-[22px] glass-panel relative z-10">
+    <header className="w-full h-20 flex flex-row items-center justify-between px-8 mt-5 top-0 rounded-[26px] app-header relative z-10">
       <div className="flex items-center gap-4 shrink-0 flex-1 max-w-md">
         <div className="relative w-full" onClick={(e) => e.stopPropagation()}>
           <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder=""
-            className="pl-10 bg-white rounded-full"
+            className="pl-10 bg-white/80 rounded-full border border-slate-200/70"
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
@@ -95,13 +93,13 @@ export function Header() {
 
       {/* Right Side Actions */}
       <div className="flex items-center gap-4 shrink-0">
-        <button className="p-2 rounded-full hover:bg-gray-100 text-[#CBA135] border border-[#CBA135]/20">
+        <button className="p-2 rounded-full hover:bg-white/70 text-[#CBA135] border border-[#CBA135]/25">
           <Bell className="h-5 w-5" />
         </button>
 
         <Link
           href="/issuers"
-          className="p-2 rounded-full hover:bg-gray-100 text-[#CBA135] border border-[#CBA135]/20"
+          className="p-2 rounded-full hover:bg-white/70 text-[#CBA135] border border-[#CBA135]/25"
           aria-label="Issuer portfolio"
         >
           <User className="h-5 w-5" />

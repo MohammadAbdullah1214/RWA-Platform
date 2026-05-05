@@ -54,33 +54,61 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Wallet actions
   const setWalletState = useCallback((address: string | null, client: TrexClient | null, balance: string) => {
-    setState(prev => ({
-      ...prev,
-      address,
-      trexClient: client,
-      balance,
-      isConnected: !!address,
-      isConnecting: false,
-    }));
+    setState(prev => {
+      const nextIsConnected = !!address;
+      if (
+        prev.address === address &&
+        prev.trexClient === client &&
+        prev.balance === balance &&
+        prev.isConnected === nextIsConnected &&
+        prev.isConnecting === false
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        address,
+        trexClient: client,
+        balance,
+        isConnected: nextIsConnected,
+        isConnecting: false,
+      };
+    });
   }, []);
 
   const setIsConnecting = useCallback((value: boolean) => {
-    setState(prev => ({ ...prev, isConnecting: value }));
+    setState(prev => (prev.isConnecting === value ? prev : { ...prev, isConnecting: value }));
   }, []);
 
   const clearWalletState = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      address: null,
-      trexClient: null,
-      balance: '0',
-      isConnected: false,
-      isConnecting: false,
-      // Also clear token data when wallet disconnects
-      tokenInfo: null,
-      userBalance: '0',
-      totalSupply: '0',
-    }));
+    setState(prev => {
+      if (
+        prev.address === null &&
+        prev.trexClient === null &&
+        prev.balance === '0' &&
+        prev.isConnected === false &&
+        prev.isConnecting === false &&
+        prev.tokenInfo === null &&
+        prev.userBalance === '0' &&
+        prev.totalSupply === '0'
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        address: null,
+        trexClient: null,
+        balance: '0',
+        isConnected: false,
+        isConnecting: false,
+        // Also clear token data when wallet disconnects
+        tokenInfo: null,
+        userBalance: '0',
+        totalSupply: '0',
+      };
+    });
   }, []);
 
   // Token actions
@@ -104,7 +132,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // UI actions
   const setLoading = useCallback((value: boolean) => {
-    setState(prev => ({ ...prev, isLoading: value }));
+    setState(prev => (prev.isLoading === value ? prev : { ...prev, isLoading: value }));
   }, []);
 
   // Refresh data
@@ -118,7 +146,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const nativeBalance = await state.trexClient.getNativeBalance(state.address); // Native ZIG for gas
       
       setTokenData(info, info.total_supply || '0', tokenBalance || '0');
-      setState(prev => ({ ...prev, balance: nativeBalance || '0' })); // Store native ZIG balance
+      setState(prev => {
+        const nextBalance = nativeBalance || '0';
+        return prev.balance === nextBalance ? prev : { ...prev, balance: nextBalance };
+      }); // Store native ZIG balance
     } catch (error) {
       console.error('Failed to refresh data:', error);
     } finally {

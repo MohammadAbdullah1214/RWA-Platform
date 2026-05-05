@@ -118,8 +118,12 @@ export interface TokenInstantiateMsg {
 export interface FactoryConfig {
   admin: string;
   token_code_id: number;
-  identity_registry: string;
-  compliance: string;
+  ctr_code_id: number;
+  tir_code_id: number;
+  compliance_code_id: number;
+  ir_code_id: number;
+  identity_registry_storage: string;
+  onchainid_code_id: number;
   default_owner: string;
   default_issuer: string;
   default_controller: string;
@@ -158,6 +162,12 @@ export interface CreateAssetTokenParams {
   metadata?: string;
   initial_supply: string;
   initial_holder: string;
+  minting_cap: string;
+  claim_details: {
+    claim_topics: number[];
+    issuers: string[];
+    issuer_claims: number[][];
+  };
 }
 
 export interface FactoryExecuteMsg {
@@ -246,6 +256,7 @@ export interface TIRExecuteMsg {
   add_issuer?: { issuer: string; topics: number[] };
   remove_issuer?: { issuer: string };
   update_issuer_topics?: { issuer: string; topics: number[] };
+  update_owner?: { owner: string };
 }
 
 export interface TIRInstantiateMsg {
@@ -317,7 +328,6 @@ export interface OIDExecuteMsg {
 
 export interface OIDInstantiateMsg {
   owner: string;
-  trusted_issuers?: string;
 }
 
 // ========================================

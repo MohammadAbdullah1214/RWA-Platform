@@ -3,7 +3,7 @@ import { rwaContractClient } from '@/lib/contract';
 
 /**
  * WARNING: This API route contains mock data and is NOT connected to the smart contract.
- * The actual asset data is managed client-side through the TrexClient in use-assets.ts hook.
+ * The actual asset data is managed client-side through TrexClient via shared contexts.
  * This route is deprecated and should either be:
  * 1. Removed entirely (assets are managed via TrexClient directly)
  * 2. Updated to use an indexer/subgraph for better performance

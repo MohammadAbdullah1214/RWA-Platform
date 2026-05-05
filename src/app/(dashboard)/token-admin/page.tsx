@@ -10,10 +10,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWallet } from "@/hooks/use-wallet";
-import { useAssets } from "@/hooks/use-asets";
+import { useAssetsContext } from "@/contexts/assets-context";
 import { TokenSelector } from "@/components/rwa/token-selector";
 import { AdminPanel } from "@/components/trex/admin-panel";
-import { BatchKYCOps } from "@/components/trex/batch-kyc-ops";
 import { IssuanceRedemptionManager } from "@/components/trex/issuance-redemption-manager";
 import { ComplianceRulesManager } from "@/components/trex/compliance-rules-manager";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -26,7 +25,7 @@ function TokenAdminPageContent() {
     loading: assetsLoading,
     error,
     loadAssets: refreshAssets,
-  } = useAssets({ trexClient, walletAddress: address });
+  } = useAssetsContext();
 
   const [selectedTokenContract, setSelectedTokenContract] = useState<
     string | null
@@ -38,11 +37,6 @@ function TokenAdminPageContent() {
     walletAddress: address,
     tokenContract: selectedTokenContract,
   });
-
-  // Load assets on mount
-  useEffect(() => {
-    refreshAssets();
-  }, [refreshAssets]);
 
   // Auto-select token from URL parameters
   useEffect(() => {
@@ -62,7 +56,7 @@ function TokenAdminPageContent() {
   const handleTokenSelect = (
     contract: string,
     _assetId: string,
-    symbol: string
+    symbol: string,
   ) => {
     setSelectedTokenContract(contract);
     setSelectedSymbol(symbol);
@@ -97,7 +91,7 @@ function TokenAdminPageContent() {
   return (
     <div className="p-8 glass-panel rounded-[22px]">
       <div className="mb-6">
-        <Link href="/manage">
+        <Link href="/transfer">
           <Button variant="ghost" size="sm">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Manage
@@ -152,9 +146,7 @@ function TokenAdminPageContent() {
               </div>
               <div className="flex-1 space-y-3">
                 <div>
-                  <h3 className="text-lg font-semibold mb-1">
-                    Select a token
-                  </h3>
+                  <h3 className="text-lg font-semibold mb-1">Select a token</h3>
                   <p className="text-sm text-gray-600">
                     Choose an asset token to manage admin operations.
                   </p>
@@ -191,65 +183,49 @@ function TokenAdminPageContent() {
             </Alert>
           ) : (
             <div className="grid gap-4 lg:grid-cols-2">
-              {selectedTokenContract && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
-                  className="lg:col-span-1"
-                >
-                  <AdminPanel
-                    tokenContract={selectedTokenContract || undefined}
-                    tokenSymbol={selectedSymbol}
-                    tokenDecimals={selectedDecimals}
-                    permissions={permissions}
-                    onUpdate={refreshAll}
-                  />
-                </motion.div>
-              )}
-
-              {selectedTokenContract && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="lg:col-span-1"
-                >
-                  <IssuanceRedemptionManager
-                    tokenContract={selectedTokenContract || ""}
-                    permissions={permissions}
-                    onUpdate={refreshAll}
-                  />
-                </motion.div>
-              )}
-
-              {selectedTokenContract &&
-                (permissions.isTokenOwner ||
-                  permissions.isTokenAgent ||
-                  permissions.isTokenController) && (
+              <div className="flex flex-col gap-4">
+                {selectedTokenContract && (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
-                    className="lg:col-span-1"
+                    transition={{ delay: 0.1 }}
                   >
-                    <BatchKYCOps
+                    <AdminPanel
                       tokenContract={selectedTokenContract || undefined}
+                      tokenSymbol={selectedSymbol}
+                      tokenDecimals={selectedDecimals}
+                      permissions={permissions}
+                      onUpdate={refreshAll}
+                    />
+                  </motion.div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-4">
+                {selectedTokenContract && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 }}
+                  >
+                    <IssuanceRedemptionManager
+                      tokenContract={selectedTokenContract || ""}
+                      permissions={permissions}
                       onUpdate={refreshAll}
                     />
                   </motion.div>
                 )}
 
-              {permissions.isComplianceOwner && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 }}
-                  className="lg:col-span-1"
-                >
-                  <ComplianceRulesManager onUpdate={refreshAll} />
-                </motion.div>
-              )}
+                {permissions.isComplianceOwner && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.4 }}
+                  >
+                    <ComplianceRulesManager onUpdate={refreshAll} />
+                  </motion.div>
+                )}
+              </div>
             </div>
           )}
         </>

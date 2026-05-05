@@ -45,6 +45,24 @@ import type {
 export class TrexClient {
   private client: CosmWasmClient | SigningCosmWasmClient;
   private walletAddress?: string;
+  private readonly inflightQueries = new Map<string, Promise<unknown>>();
+  private readonly queryCache = new Map<
+    string,
+    { expiresAt: number; value: unknown }
+  >();
+  private readonly nativeBalanceCache = new Map<
+    string,
+    { expiresAt: number; value: string }
+  >();
+  private readonly userIdentityInflight = new Map<string, Promise<UserIdentity>>();
+  private readonly userIdentityCache = new Map<
+    string,
+    { expiresAt: number; value: UserIdentity }
+  >();
+
+  private static readonly DEFAULT_QUERY_TTL_MS = 1200;
+  private static readonly IDENTITY_QUERY_TTL_MS = 2500;
+  private static readonly USER_IDENTITY_TTL_MS = 5000;
 
   constructor(client: CosmWasmClient | SigningCosmWasmClient, walletAddress?: string) {
     this.client = client;
@@ -56,6 +74,45 @@ export class TrexClient {
    */
   private resolveTokenContract(tokenContract?: string): string {
     return tokenContract || TREX_CONTRACTS.token;
+  }
+
+  private buildQueryKey(contractAddress: string, query: unknown): string {
+    return `${contractAddress}:${JSON.stringify(query)}`;
+  }
+
+  private async querySmartCached<T>(
+    contractAddress: string,
+    query: unknown,
+    ttlMs: number = TrexClient.DEFAULT_QUERY_TTL_MS
+  ): Promise<T> {
+    const now = Date.now();
+    const key = this.buildQueryKey(contractAddress, query);
+
+    const cached = this.queryCache.get(key);
+    if (cached && cached.expiresAt > now) {
+      return cached.value as T;
+    }
+
+    const inflight = this.inflightQueries.get(key);
+    if (inflight) {
+      return inflight as Promise<T>;
+    }
+
+    const request = (async () => {
+      const result = await this.client.queryContractSmart(contractAddress, query);
+      if (ttlMs > 0) {
+        this.queryCache.set(key, {
+          value: result,
+          expiresAt: Date.now() + ttlMs,
+        });
+      }
+      return result as T;
+    })().finally(() => {
+      this.inflightQueries.delete(key);
+    });
+
+    this.inflightQueries.set(key, request as Promise<unknown>);
+    return request;
   }
 
   /**
@@ -95,7 +152,7 @@ export class TrexClient {
   async getTokenInfo(tokenContract?: string): Promise<TokenInfo> {
     const contractAddress = this.resolveTokenContract(tokenContract);
     const query: TokenQueryMsg = { token_info: {} };
-    return await this.client.queryContractSmart(contractAddress, query);
+    return await this.querySmartCached<TokenInfo>(contractAddress, query);
   }
 
   /**
@@ -105,7 +162,7 @@ export class TrexClient {
     const contractAddress = this.resolveTokenContract(tokenContract);
     const query: TokenQueryMsg = { balance: { address } };
     // Contract returns balance as a raw string, not wrapped in an object
-    const response: string = await this.client.queryContractSmart(
+    const response: string = await this.querySmartCached<string>(
       contractAddress,
       query
     );
@@ -116,9 +173,18 @@ export class TrexClient {
    * Get native ZIG balance for an address
    */
   async getNativeBalance(address: string): Promise<string> {
+    const cached = this.nativeBalanceCache.get(address);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value;
+    }
+
     try {
       const client = this.client as SigningCosmWasmClient;
       const balance = await client.getBalance(address, 'uzig');
+      this.nativeBalanceCache.set(address, {
+        value: balance.amount,
+        expiresAt: Date.now() + TrexClient.DEFAULT_QUERY_TTL_MS,
+      });
       return balance.amount;
     } catch (error) {
       console.error('Failed to fetch native balance:', error);
@@ -148,7 +214,7 @@ export class TrexClient {
   async isFrozen(address: string, tokenContract?: string): Promise<boolean> {
     const contractAddress = this.resolveTokenContract(tokenContract);
     const msg: TokenQueryMsg = { frozen: { address } };
-    const response = await this.client.queryContractSmart(contractAddress, msg);
+    const response = await this.querySmartCached<boolean>(contractAddress, msg);
     return response;
   }
 
@@ -337,7 +403,11 @@ export class TrexClient {
    */
   async isVerified(wallet: string): Promise<IsVerifiedResponse> {
     const query: IRQueryMsg = { is_verified: { wallet } };
-    return await this.client.queryContractSmart(TREX_CONTRACTS.identityRegistry, query);
+    return await this.querySmartCached<IsVerifiedResponse>(
+      TREX_CONTRACTS.identityRegistry,
+      query,
+      TrexClient.IDENTITY_QUERY_TTL_MS
+    );
   }
 
   /**
@@ -345,13 +415,29 @@ export class TrexClient {
    */
   async getIdentity(wallet: string): Promise<IdentityResponse> {
     const query: IRQueryMsg = { identity: { wallet } };
-    return await this.client.queryContractSmart(TREX_CONTRACTS.identityRegistry, query);
+    return await this.querySmartCached<IdentityResponse>(
+      TREX_CONTRACTS.identityRegistry,
+      query,
+      TrexClient.IDENTITY_QUERY_TTL_MS
+    );
   }
 
   /**
    * Get comprehensive user identity data
    */
   async getUserIdentity(wallet: string): Promise<UserIdentity> {
+    const now = Date.now();
+    const cached = this.userIdentityCache.get(wallet);
+    if (cached && cached.expiresAt > now) {
+      return cached.value;
+    }
+
+    const existing = this.userIdentityInflight.get(wallet);
+    if (existing) {
+      return existing;
+    }
+
+    const request = (async () => {
     const [identity, verification] = await Promise.all([
       this.getIdentity(wallet),
       this.isVerified(wallet),
@@ -373,7 +459,7 @@ export class TrexClient {
       }
     }
 
-    return {
+    const response: UserIdentity = {
       wallet,
       onchainIdAddress: identity.identity_addr,
       country: identity.country,
@@ -381,6 +467,17 @@ export class TrexClient {
       verificationReason: verification.reason,
       claims,
     };
+    this.userIdentityCache.set(wallet, {
+      value: response,
+      expiresAt: Date.now() + TrexClient.USER_IDENTITY_TTL_MS,
+    });
+    return response;
+    })().finally(() => {
+      this.userIdentityInflight.delete(wallet);
+    });
+
+    this.userIdentityInflight.set(wallet, request);
+    return request;
   }
 
   // ========================================
@@ -437,10 +534,8 @@ export class TrexClient {
   async createOnChainIdForInvestor(investorWallet: string, label?: string): Promise<string> {
     this.ensureSigner();
     // The owner of OnchainID is the investor, but KYC Provider instantiates it
-    // Pass TIR address for claim validation at contract level
     const msg: OIDInstantiateMsg = { 
       owner: investorWallet,
-      trusted_issuers: TREX_CONTRACTS.trustedIssuers // Enable TIR validation
     };
     const result = await (this.client as SigningCosmWasmClient).instantiate(
       this.walletAddress!, // KYC Provider's wallet pays and instantiates
@@ -538,7 +633,11 @@ export class TrexClient {
    */
   async getClaim(identityAddr: string, topic: number, issuer: string): Promise<ClaimResponse> {
     const query: OIDQueryMsg = { get_claim: { topic, issuer } };
-    return await this.client.queryContractSmart(identityAddr, query);
+    return await this.querySmartCached<ClaimResponse>(
+      identityAddr,
+      query,
+      TrexClient.IDENTITY_QUERY_TTL_MS
+    );
   }
 
   /**
@@ -547,7 +646,11 @@ export class TrexClient {
   async getClaimsByTopic(identityAddr: string, topic: number): Promise<any[]> {
     const query: OIDQueryMsg = { claims_by_topic: { topic } };
     // Contract returns Vec<ClaimResponse> directly, not wrapped in an object
-    const claims = await this.client.queryContractSmart(identityAddr, query);
+    const claims = await this.querySmartCached<any[]>(
+      identityAddr,
+      query,
+      TrexClient.IDENTITY_QUERY_TTL_MS
+    );
     return Array.isArray(claims) ? claims : [];
   }
 
@@ -568,7 +671,10 @@ export class TrexClient {
     const query: ComplianceQueryMsg = {
       can_transfer: { token: contractAddress, from, to, amount },
     };
-    return await this.client.queryContractSmart(TREX_CONTRACTS.compliance, query);
+    return await this.querySmartCached<CanTransferResponse>(
+      TREX_CONTRACTS.compliance,
+      query
+    );
   }
 
   /**
@@ -596,7 +702,10 @@ export class TrexClient {
    */
   async getTrustedIssuers(): Promise<AllIssuersResponse> {
     const query: TIRQueryMsg = { all_issuers: {} };
-    return await this.client.queryContractSmart(TREX_CONTRACTS.trustedIssuers, query);
+    return await this.querySmartCached<AllIssuersResponse>(
+      TREX_CONTRACTS.trustedIssuers,
+      query
+    );
   }
 
   /**
@@ -605,7 +714,7 @@ export class TrexClient {
   async getIssuerTopics(issuer: string): Promise<number[] | null> {
     try {
       const query: TIRQueryMsg = { issuer_topics: { issuer } };
-      const result: { issuer: string; topics: number[] } = await this.client.queryContractSmart(
+      const result: { issuer: string; topics: number[] } = await this.querySmartCached(
         TREX_CONTRACTS.trustedIssuers,
         query
       );
@@ -622,7 +731,7 @@ export class TrexClient {
     try {
       const query: TIRQueryMsg = { is_issuer_for_topic: { issuer, topic } };
       const result: { issuer: string; topic: number; allowed: boolean } = 
-        await this.client.queryContractSmart(TREX_CONTRACTS.trustedIssuers, query);
+        await this.querySmartCached(TREX_CONTRACTS.trustedIssuers, query);
       return result.allowed;
     } catch (error) {
       return false;
@@ -644,6 +753,36 @@ export class TrexClient {
     return result.transactionHash;
   }
 
+  /**
+   * Remove a trusted issuer (admin only)
+   */
+  async removeTrustedIssuer(issuer: string): Promise<string> {
+    this.ensureSigner();
+    const msg: TIRExecuteMsg = { remove_issuer: { issuer } };
+    const result = await (this.client as SigningCosmWasmClient).execute(
+      this.walletAddress!,
+      TREX_CONTRACTS.trustedIssuers,
+      msg,
+      'auto'
+    );
+    return result.transactionHash;
+  }
+
+  /**
+   * Update Trusted Issuers Registry owner (current owner only)
+   */
+  async updateTirOwner(owner: string): Promise<string> {
+    this.ensureSigner();
+    const msg: TIRExecuteMsg = { update_owner: { owner } };
+    const result = await (this.client as SigningCosmWasmClient).execute(
+      this.walletAddress!,
+      TREX_CONTRACTS.trustedIssuers,
+      msg,
+      'auto'
+    );
+    return result.transactionHash;
+  }
+
   // ========================================
   // CLAIM TOPICS REGISTRY
   // ========================================
@@ -653,7 +792,10 @@ export class TrexClient {
    */
   async getRequiredTopics(): Promise<RequiredTopicsResponse> {
     const query: CTRQueryMsg = { required_topics: {} };
-    return await this.client.queryContractSmart(TREX_CONTRACTS.claimTopics, query);
+    return await this.querySmartCached<RequiredTopicsResponse>(
+      TREX_CONTRACTS.claimTopics,
+      query
+    );
   }
 
   /**
@@ -676,7 +818,7 @@ export class TrexClient {
    */
   async getIdentityRegistryConfig(): Promise<IRConfigResponse> {
     const query: IRQueryMsg = { config: {} };
-    return await this.client.queryContractSmart(
+    return await this.querySmartCached<IRConfigResponse>(
       TREX_CONTRACTS.identityRegistry,
       query
     );
@@ -687,7 +829,7 @@ export class TrexClient {
    */
   async getClaimTopicsOwner(): Promise<string> {
     const query: CTRQueryMsg = { owner: {} };
-    const response: { owner: string } = await this.client.queryContractSmart(
+    const response: { owner: string } = await this.querySmartCached(
       TREX_CONTRACTS.claimTopics,
       query
     );
@@ -699,7 +841,7 @@ export class TrexClient {
    */
   async getComplianceConfig(): Promise<ComplianceConfigResponse> {
     const query: ComplianceQueryMsg = { config: {} };
-    return await this.client.queryContractSmart(
+    return await this.querySmartCached<ComplianceConfigResponse>(
       TREX_CONTRACTS.compliance,
       query
     );
@@ -734,7 +876,10 @@ export class TrexClient {
   async getRoles(tokenContract?: string): Promise<{ owner: string; issuer: string; controller: string }> {
     const contractAddress = this.resolveTokenContract(tokenContract);
     const query = { roles: {} };
-    return await this.client.queryContractSmart(contractAddress, query);
+    return await this.querySmartCached<{ owner: string; issuer: string; controller: string }>(
+      contractAddress,
+      query
+    );
   }
 
   /**
@@ -751,7 +896,10 @@ export class TrexClient {
   async getAgents(tokenContract?: string): Promise<{ agents: string[] }> {
     const contractAddress = this.resolveTokenContract(tokenContract);
     const query = { agents: {} };
-    return await this.client.queryContractSmart(contractAddress, query);
+    return await this.querySmartCached<{ agents: string[] }>(
+      contractAddress,
+      query
+    );
   }
 
   /**
@@ -871,7 +1019,7 @@ export class TrexClient {
   async getAssetInfo(assetId: number, tokenContract?: string): Promise<AssetInfo> {
     const contractAddress = this.resolveTokenContract(tokenContract);
     const query = { asset_info: { asset_id: assetId } };
-    const response: AssetInfoResponse = await this.client.queryContractSmart(
+    const response: AssetInfoResponse = await this.querySmartCached(
       contractAddress,
       query
     );
@@ -1084,7 +1232,7 @@ export class TrexClient {
       },
     };
     
-    const response: RedemptionRequestResponse[] = await this.client.queryContractSmart(
+    const response: RedemptionRequestResponse[] = await this.querySmartCached(
       contractAddress,
       query
     );
@@ -1135,7 +1283,7 @@ export class TrexClient {
    */
   async getFactoryConfig(): Promise<FactoryConfig> {
     const query: FactoryQueryMsg = { config: {} };
-    const response = await this.client.queryContractSmart(TREX_CONTRACTS.factory, query);
+    const response = await this.querySmartCached(TREX_CONTRACTS.factory, query);
     return (response as { data?: FactoryConfig }).data || (response as FactoryConfig);
   }
 
@@ -1166,7 +1314,7 @@ export class TrexClient {
    */
   async getTokenByAssetId(assetId: number): Promise<TokenInfoFromFactory> {
     const query: FactoryQueryMsg = { token: { asset_id: assetId } };
-    const response = await this.client.queryContractSmart(TREX_CONTRACTS.factory, query);
+    const response = await this.querySmartCached(TREX_CONTRACTS.factory, query);
     return (response as { data?: TokenInfoFromFactory }).data || (response as TokenInfoFromFactory);
   }
 
@@ -1180,7 +1328,7 @@ export class TrexClient {
         limit: limit || 30 
       } 
     };
-    const response = await this.client.queryContractSmart(TREX_CONTRACTS.factory, query);
+    const response = await this.querySmartCached(TREX_CONTRACTS.factory, query);
     const tokens = (response as AllTokensResponse).tokens || (response as { data?: AllTokensResponse }).data?.tokens;
     return tokens || [];
   }
@@ -1190,7 +1338,7 @@ export class TrexClient {
    */
   async getAssetIdByContract(contract: string): Promise<number> {
     const query: FactoryQueryMsg = { asset_id_by_contract: { contract } };
-    const response = await this.client.queryContractSmart(TREX_CONTRACTS.factory, query);
+    const response = await this.querySmartCached(TREX_CONTRACTS.factory, query);
     return (response as { data?: number }).data ?? (response as number);
   }
 
@@ -1199,6 +1347,10 @@ export class TrexClient {
    */
   async createAssetToken(params: CreateAssetParams): Promise<{ assetId: number; tokenContract: string; txHash: string }> {
     this.ensureSigner();
+
+    const tokenName = params.tokenName || params.name;
+    const tokenSymbol = params.tokenSymbol || params.referenceId.toUpperCase();
+    const decimals = typeof params.decimals === 'number' ? params.decimals : 6;
 
     // Serialize metadata to JSON string
     const metadataString = JSON.stringify({
@@ -1213,14 +1365,20 @@ export class TrexClient {
     const msg: FactoryExecuteMsg = {
       create_token: {
         reference_id: params.referenceId,
-        name: params.name,
-        symbol: params.referenceId.toUpperCase(),
-        decimals: 6,
+        name: tokenName,
+        symbol: tokenSymbol,
+        decimals,
         description: params.description,
         legal_owner: params.legalOwner,
         metadata: metadataString,
         initial_supply: '0',
         initial_holder: this.walletAddress!,
+        minting_cap: params.mintingCap || "1000000000",
+        claim_details: params.claimDetails || {
+          claim_topics: [1, 2],
+          issuers: [this.walletAddress!],
+          issuer_claims: [[1, 2]],
+        },
       },
     };
 
@@ -1236,7 +1394,9 @@ export class TrexClient {
     // Extract asset_id from events
     const createEvent = result.events.find((e) => e.type === 'wasm');
     const assetIdAttr = createEvent?.attributes.find((a) => a.key === 'asset_id');
-    const contractAttr = createEvent?.attributes.find((a) => a.key === 'contract_address');
+    const contractAttr = createEvent?.attributes.find(
+      (a) => a.key === 'token_deployed' || a.key === 'contract_address'
+    );
 
     return {
       assetId: assetIdAttr ? parseInt(assetIdAttr.value) : 0,
@@ -1250,7 +1410,7 @@ export class TrexClient {
    */
   async getTokenInfoForContract(tokenContract: string): Promise<TokenInfo> {
     const query: TokenQueryMsg = { token_info: {} };
-    return await this.client.queryContractSmart(tokenContract, query);
+    return await this.querySmartCached<TokenInfo>(tokenContract, query);
   }
 
   /**
@@ -1258,7 +1418,7 @@ export class TrexClient {
    */
   async getBalanceForToken(tokenContract: string, address: string): Promise<string> {
     const query: TokenQueryMsg = { balance: { address } };
-    return await this.client.queryContractSmart(tokenContract, query);
+    return await this.querySmartCached<string>(tokenContract, query);
   }
 
   /**
@@ -1318,11 +1478,20 @@ export interface CreateAssetParams {
   description: string;
   legalOwner: string;
   name: string;
+  tokenName?: string;
+  tokenSymbol?: string;
+  decimals?: number;
   type: string;
   location: string;
   underlyingValue: number;
   currency?: string;
   additionalMetadata?: Record<string, any>;
+  mintingCap?: string;
+  claimDetails?: {
+    claim_topics: number[];
+    issuers: string[];
+    issuer_claims: number[][];
+  };
 }
 
 export interface CreateAssetResult {

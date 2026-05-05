@@ -14,11 +14,11 @@ function LayoutContent({ children }: RootLayoutWrapperProps) {
   const { startTour } = useTour();
 
   return (
-    <div className="min-h-screen w-full bg-white">
+    <div className="min-h-screen w-full app-shell">
       <Sidebar />
       <div className="ml-[310px] mr-[20px] flex flex-col min-h-screen">
         <Header />
-        <main className="flex-1 mt-3">
+        <main className="flex-1 mt-4">
           <div className="w-full">{children}</div>
         </main>
       </div>

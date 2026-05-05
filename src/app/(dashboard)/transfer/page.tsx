@@ -1,23 +1,21 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "motion/react";
 import { ArrowLeft, Shield } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useWallet } from "@/hooks/use-wallet";
-import { useAssets } from "@/hooks/use-asets";
+import { useAssetsContext } from "@/contexts/assets-context";
 import { useTokenBalance } from "@/hooks/use-factory-assets";
 import { TokenSelector } from "@/components/rwa/token-selector";
 import { TokenTransfer } from "@/components/trex/token-transfer";
-import { IdentityManager } from "@/components/trex/identity-manager";
-import { IdentityRegistryAdmin } from "@/components/trex/identity-registry-admin";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { usePermissions } from "@/hooks/use-permissions";
+import { AssetAnalyticsChart } from "@/components/ui/asset-analytics-chart";
+import { apiFetch } from "@/lib/backend";
 
 function ManagePageContent() {
   const searchParams = useSearchParams();
@@ -27,7 +25,7 @@ function ManagePageContent() {
     loading: assetsLoading,
     error,
     loadAssets: refreshAssets,
-  } = useAssets({ trexClient, walletAddress: address });
+  } = useAssetsContext();
 
   // Multi-token state
   const [selectedTokenContract, setSelectedTokenContract] = useState<
@@ -35,53 +33,50 @@ function ManagePageContent() {
   >(null);
   const [selectedSymbol, setSelectedSymbol] = useState<string>("");
   const [selectedDecimals, setSelectedDecimals] = useState<number>(6);
-  const { permissions } = usePermissions({
-    trexClient,
-    walletAddress: address,
-    tokenContract: selectedTokenContract,
-  });
-
   // Identity state
   const [userIdentity, setUserIdentity] = useState<any>(null);
   const [loadingIdentity, setLoadingIdentity] = useState(false);
+  const [assetIssuanceSeries, setAssetIssuanceSeries] = useState<
+    { month: string; issued: number; redeemed: number; net: number }[]
+  >([]);
 
   // Get balance for selected token
   const { balance: tokenBalance, isLoading: balanceLoading } = useTokenBalance(
     trexClient,
     selectedTokenContract,
-    address
+    address,
   );
 
-  // Load assets on mount
-  useEffect(() => {
-    refreshAssets();
-  }, [refreshAssets]);
+  const requestedAssetId = useMemo(() => searchParams.get("asset"), [searchParams]);
+  const requestedSymbol = useMemo(() => searchParams.get("symbol"), [searchParams]);
 
   // Auto-select token from URL parameters
   useEffect(() => {
-    const assetId = searchParams.get("asset");
-    const symbol = searchParams.get("symbol");
-
-    console.log("Auto-select check:", {
-      assetId,
-      symbol,
-      assetsCount: assets.length,
-      selectedTokenContract,
-    });
-
-    if (assetId && symbol && assets.length > 0 && !selectedTokenContract) {
-      const asset = assets.find((a) => a.id === assetId || a.symbol === symbol);
-      console.log("Found asset:", asset);
-      if (asset) {
-        console.log("Setting token:", asset.tokenContractAddress);
-        setSelectedTokenContract(asset.tokenContractAddress);
-        setSelectedSymbol(asset.symbol);
-        setSelectedDecimals(6); // Default decimals
-      } else {
-        console.log("Asset not found in list");
-      }
+    if ((!requestedAssetId && !requestedSymbol) || assets.length === 0) {
+      return;
     }
-  }, [searchParams, assets, selectedTokenContract]);
+
+    const asset = assets.find(
+      (a) => a.id === requestedAssetId || a.symbol === requestedSymbol,
+    );
+    if (!asset) {
+      return;
+    }
+
+    if (selectedTokenContract === asset.tokenContractAddress && selectedSymbol === asset.symbol) {
+      return;
+    }
+
+    setSelectedTokenContract(asset.tokenContractAddress);
+    setSelectedSymbol(asset.symbol);
+    setSelectedDecimals(6);
+  }, [
+    requestedAssetId,
+    requestedSymbol,
+    assets,
+    selectedTokenContract,
+    selectedSymbol,
+  ]);
 
   // Load user identity
   useEffect(() => {
@@ -103,10 +98,89 @@ function ManagePageContent() {
     loadUserIdentity();
   }, [trexClient, address]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadAssetSeries = async () => {
+      if (!selectedTokenContract) {
+        setAssetIssuanceSeries([]);
+        return;
+      }
+
+      try {
+        const query = `?tokenContract=${encodeURIComponent(selectedTokenContract)}`;
+        const [issuance, redemptions] = await Promise.all([
+          apiFetch<Array<{ amount: string; createdAt: string }>>(
+            `/issuance-requests${query}`,
+          ).catch(() => []),
+          apiFetch<Array<{ amount: string; createdAt: string }>>(
+            `/redemption-requests${query}`,
+          ).catch(() => []),
+        ]);
+
+        const now = new Date();
+        const months: { key: string; label: string }[] = [];
+        for (let i = 9; i >= 0; i -= 1) {
+          const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          months.push({
+            key: `${date.getFullYear()}-${date.getMonth()}`,
+            label: date.toLocaleString("en-US", { month: "short" }),
+          });
+        }
+
+        const bucket = new Map(
+          months.map((month) => [month.key, { issued: 0, redeemed: 0 }]),
+        );
+
+        issuance.forEach((item) => {
+          const createdAt = new Date(item.createdAt);
+          const key = `${createdAt.getFullYear()}-${createdAt.getMonth()}`;
+          const entry = bucket.get(key);
+          if (entry) {
+            entry.issued += Number(item.amount) || 0;
+          }
+        });
+
+        redemptions.forEach((item) => {
+          const createdAt = new Date(item.createdAt);
+          const key = `${createdAt.getFullYear()}-${createdAt.getMonth()}`;
+          const entry = bucket.get(key);
+          if (entry) {
+            entry.redeemed += Number(item.amount) || 0;
+          }
+        });
+
+        const series = months.map((month) => {
+          const values = bucket.get(month.key) || { issued: 0, redeemed: 0 };
+          return {
+            month: month.label,
+            issued: values.issued,
+            redeemed: values.redeemed,
+            net: values.issued - values.redeemed,
+          };
+        });
+
+        if (isMounted) {
+          setAssetIssuanceSeries(series);
+        }
+      } catch (error) {
+        console.error("Failed to load asset series:", error);
+        if (isMounted) {
+          setAssetIssuanceSeries([]);
+        }
+      }
+    };
+
+    loadAssetSeries();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedTokenContract]);
+
   const handleTokenSelect = (
     contract: string,
     _assetId: string,
-    symbol: string
+    symbol: string,
   ) => {
     setSelectedTokenContract(contract);
     setSelectedSymbol(symbol);
@@ -164,9 +238,8 @@ function ManagePageContent() {
 
       <Alert className="mb-6">
         <AlertDescription>
-          Investors can transfer tokens and view identity status. KYC providers
-          issue claims via the KYC Provider page. Identity Registry owners can
-          register identities in the Identity tab.
+          Use this page for token transfers. Identity and KYC tools live on the
+          Investor KYC and KYC Provider pages.
         </AlertDescription>
       </Alert>
 
@@ -175,7 +248,7 @@ function ManagePageContent() {
         <Card className="bg-white rounded-2xl mb-6">
           <CardContent className="pt-6">
             <div className="flex items-start gap-4">
-              <div className="p-3 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100">
+              <div className="p-3 rounded-lg bg-linear-to-br from-blue-50 to-blue-100">
                 <Shield className="h-6 w-6 text-blue-600" />
               </div>
               <div className="flex-1">
@@ -217,29 +290,27 @@ function ManagePageContent() {
         </Card>
       ) : (
         <Card className="bg-white rounded-2xl mb-6">
-  <CardContent className="pt-6">
-    <div className="flex items-start gap-4">
-      <div className="p-3 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100">
-        <Shield className="h-6 w-6 text-blue-600" />
-      </div>
-      <div className="flex-1 space-y-3">
-        <div>
-          <h3 className="text-lg font-semibold mb-1">
-            Select a token
-          </h3>
-          <p className="text-sm text-gray-600">
-            Choose an asset token to manage transfers and identity.
-          </p>
-        </div>
-        <TokenSelector
-          selectedTokenContract={selectedTokenContract}
-          onSelect={handleTokenSelect}
-          className="max-w-md"
-        />
-      </div>
-    </div>
-  </CardContent>
-</Card>
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-lg bg-linear-to-br from-blue-50 to-blue-100">
+                <Shield className="h-6 w-6 text-blue-600" />
+              </div>
+              <div className="flex-1 space-y-3">
+                <div>
+                  <h3 className="text-lg font-semibold mb-1">Select a token</h3>
+                  <p className="text-sm text-gray-600">
+                    Choose an asset token to manage transfers and identity.
+                  </p>
+                </div>
+                <TokenSelector
+                  selectedTokenContract={selectedTokenContract}
+                  onSelect={handleTokenSelect}
+                  className="max-w-md"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Error Alert */}
@@ -249,82 +320,54 @@ function ManagePageContent() {
         </Alert>
       )}
 
+      {selectedTokenContract && (
+        <Card className="bg-white rounded-2xl mb-6">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold">Asset Analytics</h2>
+                <p className="text-sm text-gray-600">
+                  Issued vs redeemed tokens for {selectedSymbol || "this asset"}
+                </p>
+              </div>
+            </div>
+            <AssetAnalyticsChart
+              data={
+                assetIssuanceSeries.length > 0 ? assetIssuanceSeries : undefined
+              }
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Loading State */}
       {isLoading ? (
-  <div className="space-y-4">
-    <Skeleton className="h-100 w-full rounded-2xl" />
-    <Skeleton className="h-100 w-full rounded-2xl" />
-  </div>
-) : selectedTokenContract ? (
-  <Tabs defaultValue="transfer" className="w-full">
-    <TabsList className="grid w-fit grid-cols-2 p-1 rounded-xl">
-      <TabsTrigger
-        value="transfer"
-        className="rounded-lg data-[state=active]:bg-gradient-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
-      >
-        Transfer
-      </TabsTrigger>
-      <TabsTrigger
-        value="identity"
-        className="rounded-lg data-[state=active]:bg-gradient-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
-      >
-        Identity
-      </TabsTrigger>
-    </TabsList>
-
-    {/* Transfer Tab */}
-    <TabsContent value="transfer" className="mt-6">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
-        <TokenTransfer
-          tokenContract={selectedTokenContract || undefined}
-          tokenSymbol={selectedSymbol}
-          tokenDecimals={selectedDecimals}
-          userBalance={tokenBalance}
-          userIdentity={userIdentity}
-          onSuccess={refreshAll}
-        />
-      </motion.div>
-    </TabsContent>
-
-    {/* Identity Tab */}
-    <TabsContent value="identity" className="mt-6">
-      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="space-y-4">
+          <Skeleton className="h-100 w-full rounded-2xl" />
+          <Skeleton className="h-100 w-full rounded-2xl" />
+        </div>
+      ) : selectedTokenContract ? (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="lg:col-span-1"
         >
-          <IdentityManager
+          <TokenTransfer
+            tokenContract={selectedTokenContract || undefined}
+            tokenSymbol={selectedSymbol}
+            tokenDecimals={selectedDecimals}
+            userBalance={tokenBalance}
             userIdentity={userIdentity}
-            onUpdate={refreshAll}
+            onSuccess={refreshAll}
           />
         </motion.div>
+      ) : (
+        <Alert className="mb-6">
+          <AlertDescription>Select a token above to continue.</AlertDescription>
+        </Alert>
+      )}
 
-        {permissions.isIdentityRegistryOwner && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="lg:col-span-1"
-          >
-            <IdentityRegistryAdmin onUpdate={refreshAll} />
-          </motion.div>
-        )}
-      </div>
-    </TabsContent>
-  </Tabs>
-) : (
-  <Alert className="mb-6">
-    <AlertDescription>Select a token above to continue.</AlertDescription>
-  </Alert>
-)}
-
-{/* Info Footer */}
+      {/* Info Footer */}
       <div className="mt-6 p-4 rounded-2xl bg-white text-sm text-gray-600">
         <p className="font-medium mb-2 text-gray-900">Important Information:</p>
         <ul className="space-y-1 list-disc list-inside">
@@ -361,6 +404,3 @@ export default function ManagePage() {
     </Suspense>
   );
 }
-
-
-

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Search,
@@ -37,28 +37,20 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AssetCard } from "@/components/rwa/asset-card";
 import { ConnectWalletCard } from "@/components/wallet/connect-wallet-card";
-import { useAssets } from "@/hooks/use-asets";
+import { useAssetsContext } from "@/contexts/assets-context";
 import { useWallet } from "@/hooks/use-wallet";
 import { formatCurrency, formatPercentage } from "@/lib/utils";
 import { RWAAsset } from "@/types/rwa";
 
 export default function AssetsPage() {
-  const { address, trexClient, connectKeplr, isConnecting } = useWallet();
-  const { assets, loading, selectedAsset, setSelectedAsset, loadAssets } =
-    useAssets({
-      trexClient,
-      walletAddress: address,
-    });
+  const { address, connectKeplr, isConnecting } = useWallet();
+  const { assets, loading, selectedAsset, setSelectedAsset } =
+    useAssetsContext();
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("value-desc");
-
-  // Load assets on mount (works without wallet connection)
-  useEffect(() => {
-    loadAssets();
-  }, [loadAssets]);
 
   // Filter and sort assets
   const filteredAssets = useMemo(() => {
@@ -70,7 +62,7 @@ export default function AssetsPage() {
         (asset) =>
           asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           asset.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          asset.location.toLowerCase().includes(searchQuery.toLowerCase())
+          asset.location.toLowerCase().includes(searchQuery.toLowerCase()),
       );
     }
 
@@ -82,7 +74,7 @@ export default function AssetsPage() {
     // Apply status filter
     if (filterStatus !== "all") {
       result = result.filter(
-        (asset) => asset.complianceStatus === filterStatus
+        (asset) => asset.complianceStatus === filterStatus,
       );
     }
 
@@ -119,7 +111,7 @@ export default function AssetsPage() {
   const stats = useMemo(() => {
     const totalValue = assets.reduce(
       (sum, asset) => sum + asset.underlyingValue,
-      0
+      0,
     );
     const avgTokenization =
       assets.length > 0
@@ -130,7 +122,7 @@ export default function AssetsPage() {
           }, 0) / assets.length
         : 0;
     const compliantCount = assets.filter(
-      (a) => a.complianceStatus === "compliant"
+      (a) => a.complianceStatus === "compliant",
     ).length;
 
     return {
@@ -139,10 +131,13 @@ export default function AssetsPage() {
       avgTokenization,
       compliantPercentage:
         assets.length > 0 ? (compliantCount / assets.length) * 100 : 0,
-      byType: assets.reduce((acc, asset) => {
-        acc[asset.assetType] = (acc[asset.assetType] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>),
+      byType: assets.reduce(
+        (acc, asset) => {
+          acc[asset.assetType] = (acc[asset.assetType] || 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>,
+      ),
     };
   }, [assets]);
 
@@ -496,8 +491,8 @@ export default function AssetsPage() {
                               asset.complianceStatus === "compliant"
                                 ? "success"
                                 : asset.complianceStatus === "pending"
-                                ? "outline"
-                                : "destructive"
+                                  ? "outline"
+                                  : "destructive"
                             }
                           >
                             {asset.complianceStatus}
@@ -669,7 +664,7 @@ export default function AssetsPage() {
                     .sort(
                       (a, b) =>
                         new Date(b.issuanceDate).getTime() -
-                        new Date(a.issuanceDate).getTime()
+                        new Date(a.issuanceDate).getTime(),
                     )
                     .slice(0, 6)
                     .map((asset, index) => (

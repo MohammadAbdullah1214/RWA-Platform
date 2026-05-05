@@ -3,10 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useWallet } from "@/hooks/use-wallet";
-import { useFactoryAssets } from "@/hooks/use-factory-assets";
 import { ROLE_WALLETS } from "@/lib/zigchain-config";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -24,28 +22,42 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { apiFetch } from "@/lib/backend";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-
-type InvestorEntry = {
-  address: string;
-  label?: string;
-};
 
 type IssuerOption = {
   address: string;
   label: string;
 };
 
-const INVESTOR_STORAGE_KEY = "issuer_investor_watchlist";
+type IndexedAsset = {
+  id: string;
+  factoryAssetId?: number | null;
+  tokenContract: string;
+  name: string;
+  symbol: string;
+  issuerWallet?: string | null;
+  legalOwner?: string | null;
+  description?: string | null;
+  referenceId?: string | null;
+  metadata?: any;
+};
+
+type IndexedBalance = {
+  tokenContract: string;
+  walletAddress: string;
+  balance: string;
+  updatedAt: string;
+};
 
 export default function IssuersPage() {
-  const { trexClient, address: walletAddress } = useWallet();
-  const { assets, isLoading, error, refresh } = useFactoryAssets(trexClient);
-  const [issuerRoles, setIssuerRoles] = useState<Record<string, string>>({});
+  const { address: walletAddress } = useWallet();
+  const [assets, setAssets] = useState<IndexedAsset[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [selectedIssuer, setSelectedIssuer] = useState<string>("");
-  const [investors, setInvestors] = useState<InvestorEntry[]>([]);
-  const [investorInput, setInvestorInput] = useState("");
-  const [balances, setBalances] = useState<Record<string, Record<string, string>>>({});
+  const [balances, setBalances] = useState<Record<string, IndexedBalance[]>>({});
   const [loadingBalances, setLoadingBalances] = useState(false);
 
   const issuerOptions = useMemo<IssuerOption[]>(() => {
@@ -68,86 +80,53 @@ export default function IssuersPage() {
     addOption(walletAddress, "Connected Wallet");
 
     assets.forEach((asset) => {
-      const issuer = issuerRoles[asset.contract_address];
+      const issuer = asset.issuerWallet || asset.legalOwner;
       if (issuer) {
         addOption(issuer, `Issuer ${issuer.slice(0, 10)}...`);
       }
     });
 
     return options;
-  }, [assets, issuerRoles, walletAddress]);
+  }, [assets, walletAddress]);
 
   const filteredAssets = useMemo(() => {
     if (!selectedIssuer) return [];
     const target = selectedIssuer.toLowerCase();
     return assets.filter((asset) => {
-      const issuer = issuerRoles[asset.contract_address];
+      const issuer = asset.issuerWallet || asset.legalOwner;
       return issuer?.toLowerCase() === target;
     });
-  }, [assets, issuerRoles, selectedIssuer]);
+  }, [assets, selectedIssuer]);
 
   useEffect(() => {
-    if (!trexClient || assets.length === 0) {
-      setIssuerRoles({});
-      return;
-    }
-
     let cancelled = false;
-    const loadRoles = async () => {
-      const entries = await Promise.all(
-        assets.map(async (asset) => {
-          try {
-            const roles = await trexClient.getRoles(asset.contract_address);
-            return [asset.contract_address, roles.issuer] as const;
-          } catch {
-            return [asset.contract_address, ""] as const;
-          }
-        })
-      );
-
-      if (!cancelled) {
-        const next: Record<string, string> = {};
-        entries.forEach(([contract, issuer]) => {
-          if (issuer) next[contract] = issuer;
-        });
-        setIssuerRoles(next);
+    const loadAssets = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const indexedAssets = await apiFetch<IndexedAsset[]>("/indexed/assets");
+        if (!cancelled) {
+          setAssets(indexedAssets);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(err.message || "Failed to load indexed assets");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
-    loadRoles();
+    loadAssets();
     return () => {
       cancelled = true;
     };
-  }, [trexClient, assets]);
+  }, []);
 
   useEffect(() => {
-    const stored = localStorage.getItem(INVESTOR_STORAGE_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as InvestorEntry[];
-        setInvestors(parsed);
-        return;
-      } catch {
-        localStorage.removeItem(INVESTOR_STORAGE_KEY);
-      }
-    }
-
-    if (walletAddress) {
-      setInvestors([{ address: walletAddress, label: "Connected Wallet" }]);
-    }
-  }, [walletAddress]);
-
-  useEffect(() => {
-    if (investors.length === 0) {
-      localStorage.removeItem(INVESTOR_STORAGE_KEY);
-      return;
-    }
-
-    localStorage.setItem(INVESTOR_STORAGE_KEY, JSON.stringify(investors));
-  }, [investors]);
-
-  useEffect(() => {
-    if (!trexClient || filteredAssets.length === 0 || investors.length === 0) {
+    if (filteredAssets.length === 0) {
       setBalances({});
       return;
     }
@@ -158,26 +137,15 @@ export default function IssuersPage() {
       try {
         const results = await Promise.all(
           filteredAssets.map(async (asset) => {
-            const tokenBalances: Record<string, string> = {};
-            await Promise.all(
-              investors.map(async (investor) => {
-                try {
-                  const balance = await trexClient.getBalanceForToken(
-                    asset.contract_address,
-                    investor.address
-                  );
-                  tokenBalances[investor.address] = balance;
-                } catch {
-                  tokenBalances[investor.address] = "0";
-                }
-              })
+            const tokenBalances = await apiFetch<IndexedBalance[]>(
+              `/indexed/tokens/${asset.tokenContract}/balances`
             );
-            return [asset.contract_address, tokenBalances] as const;
+            return [asset.tokenContract, tokenBalances] as const;
           })
         );
 
         if (!cancelled) {
-          const next: Record<string, Record<string, string>> = {};
+          const next: Record<string, IndexedBalance[]> = {};
           results.forEach(([contract, tokenBalances]) => {
             next[contract] = tokenBalances;
           });
@@ -194,7 +162,7 @@ export default function IssuersPage() {
     return () => {
       cancelled = true;
     };
-  }, [trexClient, filteredAssets, investors]);
+  }, [filteredAssets]);
 
   useEffect(() => {
     if (!selectedIssuer && issuerOptions.length > 0) {
@@ -202,21 +170,12 @@ export default function IssuersPage() {
     }
   }, [issuerOptions, selectedIssuer]);
 
-  const handleAddInvestor = () => {
-    const trimmed = investorInput.trim();
-    if (!trimmed) return;
-    if (investors.some((investor) => investor.address === trimmed)) {
-      toast.info("Investor already added");
-      setInvestorInput("");
-      return;
+  const hasNonZeroBalance = (balance: string) => {
+    try {
+      return BigInt(balance) > 0n;
+    } catch {
+      return false;
     }
-
-    setInvestors((prev) => [...prev, { address: trimmed }]);
-    setInvestorInput("");
-  };
-
-  const handleRemoveInvestor = (address: string) => {
-    setInvestors((prev) => prev.filter((entry) => entry.address !== address));
   };
 
   return (
@@ -225,8 +184,8 @@ export default function IssuersPage() {
         <CardHeader>
           <CardTitle>Issuer Portfolio</CardTitle>
           <CardDescription>
-            View assets issued by a specific issuer and see which investors hold their
-            tokens. Ownership is derived from the watchlist addresses below.
+            View assets issued by a specific issuer and see which investors hold
+            their tokens, sourced from indexed balances.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -248,56 +207,55 @@ export default function IssuersPage() {
                 </SelectContent>
               </Select>
               <div className="text-xs text-slate-500">
-                Issuers are derived from token roles. If you do not see an issuer,
-                refresh assets or add their wallet manually.
+                Issuers are derived from indexed token roles. If you do not see an
+                issuer, check the indexer or add a user wallet to the backend.
               </div>
-              <Button variant="outline" size="sm" onClick={() => refresh()}>
+              <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
                 Refresh assets
               </Button>
             </div>
-            <div className="space-y-3">
-              <div className="text-sm font-medium text-slate-700">
-                Investor Watchlist
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  value={investorInput}
-                  onChange={(event) => setInvestorInput(event.target.value)}
-                  placeholder="Add investor wallet address"
-                />
-                <Button onClick={handleAddInvestor}>Add</Button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {investors.length === 0 ? (
-                  <span className="text-xs text-slate-500">
-                    Add investor wallets to see who holds each asset.
-                  </span>
-                ) : (
-                  investors.map((investor) => (
-                    <Badge
-                      key={investor.address}
-                      variant="secondary"
-                      className="flex items-center gap-2"
-                    >
-                      <span className="truncate max-w-[140px]">
-                        {investor.label || investor.address}
-                      </span>
-                      <button
-                        onClick={() => handleRemoveInvestor(investor.address)}
-                        className="text-xs text-slate-500 hover:text-slate-700"
-                        aria-label={`Remove ${investor.address}`}
-                      >
-                        x
-                      </button>
-                    </Badge>
-                  ))
-                )}
-              </div>
-              <div className="text-xs text-slate-500">
-                The contracts do not expose a global holders list, so balances are
-                checked against this list only.
-              </div>
-            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border border-slate-200/70 bg-white/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>Tracked Holder Wallets</CardTitle>
+          <CardDescription>
+            Add wallets to the backend so the indexer can track their balances.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <form
+            className="flex flex-col gap-3 md:flex-row"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const form = event.currentTarget;
+              const data = new FormData(form);
+              const wallet = String(data.get("wallet") || "").trim();
+              if (!wallet) return;
+              try {
+                await apiFetch("/indexed/wallets", {
+                  method: "POST",
+                  body: JSON.stringify({ walletAddress: wallet }),
+                });
+                form.reset();
+                toast.success("Wallet added to tracking list");
+              } catch (error: any) {
+                toast.error(error.message || "Failed to add wallet");
+              }
+            }}
+          >
+            <Input
+              name="wallet"
+              placeholder="zig1..."
+              className="flex-1 bg-white/90 border-slate-200/70 focus:bg-white"
+            />
+            <Button type="submit">Track Wallet</Button>
+          </form>
+          <div className="text-xs text-slate-500">
+            The indexer will pick this up on the next cycle (30s) and balances
+            will appear under the issuer’s assets.
           </div>
         </CardContent>
       </Card>
@@ -310,7 +268,7 @@ export default function IssuersPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {loading ? (
             <div className="text-sm text-slate-500">Loading assets...</div>
           ) : error ? (
             <div className="text-sm text-red-600">Failed to load assets: {error}</div>
@@ -321,26 +279,29 @@ export default function IssuersPage() {
           ) : (
             <div className="space-y-6">
               {filteredAssets.map((asset) => {
-                const tokenBalances = balances[asset.contract_address] || {};
+                const tokenBalances = balances[asset.tokenContract] || [];
+                const holders = tokenBalances.filter((entry) =>
+                  hasNonZeroBalance(entry.balance)
+                );
                 return (
-                  <Card key={asset.contract_address} className="border border-slate-200/70">
+                  <Card key={asset.tokenContract} className="border border-slate-200/70">
                     <CardHeader className="flex flex-col gap-2">
                       <div className="flex items-center justify-between">
                         <div>
                           <CardTitle className="text-base">{asset.name}</CardTitle>
                           <CardDescription>
-                            {asset.symbol} - Asset ID {asset.asset_id}
+                            {asset.symbol} - Asset ID {asset.factoryAssetId ?? asset.id}
                           </CardDescription>
                         </div>
                         <Link
-                          href={`/assets/${asset.asset_id}`}
+                          href={`/assets/${asset.factoryAssetId ?? asset.id}`}
                           className="text-sm text-blue-600 hover:underline"
                         >
                           View Asset
                         </Link>
                       </div>
                       <div className="text-xs text-slate-500">
-                        Token Contract: {asset.contract_address}
+                        Token Contract: {asset.tokenContract}
                       </div>
                     </CardHeader>
                     <CardContent>
@@ -353,29 +314,26 @@ export default function IssuersPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {investors.length === 0 ? (
+                          {holders.length === 0 ? (
                             <TableRow>
                               <TableCell colSpan={3} className="text-sm text-slate-500">
-                                Add investors to display balances.
+                                {loadingBalances
+                                  ? "Loading balances..."
+                                  : "No indexed holders for this asset."}
                               </TableCell>
                             </TableRow>
                           ) : (
-                            investors.map((investor) => {
-                              const rawBalance = tokenBalances[investor.address] || "0";
-                              return (
-                                <TableRow key={investor.address}>
-                                  <TableCell>
-                                    {investor.label || "Investor"}
-                                  </TableCell>
-                                  <TableCell className="font-mono text-xs">
-                                    {investor.address}
-                                  </TableCell>
-                                  <TableCell className="text-right font-medium">
-                                    {loadingBalances ? "..." : rawBalance}
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })
+                            holders.map((holder) => (
+                              <TableRow key={holder.walletAddress}>
+                                <TableCell>Investor</TableCell>
+                                <TableCell className="font-mono text-xs">
+                                  {holder.walletAddress}
+                                </TableCell>
+                                <TableCell className="text-right font-medium">
+                                  {loadingBalances ? "..." : holder.balance}
+                                </TableCell>
+                              </TableRow>
+                            ))
                           )}
                         </TableBody>
                       </Table>

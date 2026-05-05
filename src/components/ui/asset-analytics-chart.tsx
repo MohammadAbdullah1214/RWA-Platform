@@ -11,21 +11,31 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-// Placeholder data
-const data = [
-  { month: "Jan", totalUsers: 20000, revenueGrowth: 15000 },
-  { month: "Feb", totalUsers: 25000, revenueGrowth: 18000 },
-  { month: "Mar", totalUsers: 30000, revenueGrowth: 22000 },
-  { month: "Apr", totalUsers: 35000, revenueGrowth: 28000 },
-  { month: "May", totalUsers: 32000, revenueGrowth: 32000 },
-  { month: "Jun", totalUsers: 38000, revenueGrowth: 30000 },
-  { month: "Jul", totalUsers: 42000, revenueGrowth: 35000 },
-  { month: "Aug", totalUsers: 45000, revenueGrowth: 38000 },
-  { month: "Sep", totalUsers: 48000, revenueGrowth: 42000 },
-  { month: "Oct", totalUsers: 50000, revenueGrowth: 45000 },
+type AssetAnalyticsPoint = {
+  month: string;
+  issued: number;
+  redeemed: number;
+  net: number;
+};
+
+const fallbackData: AssetAnalyticsPoint[] = [
+  { month: "Jan", issued: 12000, redeemed: 4000, net: 8000 },
+  { month: "Feb", issued: 18000, redeemed: 6000, net: 12000 },
+  { month: "Mar", issued: 24000, redeemed: 9000, net: 15000 },
+  { month: "Apr", issued: 21000, redeemed: 11000, net: 10000 },
+  { month: "May", issued: 26000, redeemed: 8000, net: 18000 },
+  { month: "Jun", issued: 30000, redeemed: 12000, net: 18000 },
+  { month: "Jul", issued: 33000, redeemed: 14000, net: 19000 },
+  { month: "Aug", issued: 36000, redeemed: 15000, net: 21000 },
+  { month: "Sep", issued: 39000, redeemed: 17000, net: 22000 },
+  { month: "Oct", issued: 42000, redeemed: 19000, net: 23000 },
 ];
 
-export function AssetAnalyticsChart() {
+export function AssetAnalyticsChart({
+  data = fallbackData,
+}: {
+  data?: AssetAnalyticsPoint[];
+}) {
   return (
     <ResponsiveContainer width="100%" height={350}>
       <LineChart
@@ -33,15 +43,17 @@ export function AssetAnalyticsChart() {
         margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
       >
         <defs>
-          {/* Gradient for first line (#2A5FA6) */}
-          <linearGradient id="colorTotalUsers" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id="colorIssued" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="#2A5FA6" stopOpacity={0.3} />
             <stop offset="95%" stopColor="#2A5FA6" stopOpacity={0} />
           </linearGradient>
-          {/* Gradient for second line (#BC953D) */}
-          <linearGradient id="colorRevenueGrowth" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id="colorRedeemed" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="#BC953D" stopOpacity={0.3} />
             <stop offset="95%" stopColor="#BC953D" stopOpacity={0} />
+          </linearGradient>
+          <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#60A5FA" stopOpacity={0.25} />
+            <stop offset="95%" stopColor="#60A5FA" stopOpacity={0} />
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -57,25 +69,35 @@ export function AssetAnalyticsChart() {
         <Legend wrapperStyle={{ paddingTop: "20px" }} iconType="circle" />
         <Line
           type="monotone"
-          dataKey="totalUsers"
+          dataKey="issued"
           stroke="#2A5FA6"
           strokeWidth={3}
-          fill="url(#colorTotalUsers)"
+          fill="url(#colorIssued)"
           fillOpacity={1}
           dot={{ fill: "#2A5FA6", r: 4 }}
           activeDot={{ r: 6 }}
-          name="Total Users"
+          name="Issued Tokens"
         />
         <Line
           type="monotone"
-          dataKey="revenueGrowth"
+          dataKey="redeemed"
           stroke="#BC953D"
           strokeWidth={3}
-          fill="url(#colorRevenueGrowth)"
+          fill="url(#colorRedeemed)"
           fillOpacity={1}
           dot={{ fill: "#BC953D", r: 4 }}
           activeDot={{ r: 6 }}
-          name="Revenue Growth"
+          name="Redeemed Tokens"
+        />
+        <Line
+          type="monotone"
+          dataKey="net"
+          stroke="#60A5FA"
+          strokeDasharray="6 4"
+          strokeWidth={2}
+          fill="url(#colorNet)"
+          dot={false}
+          name="Net Circulation"
         />
       </LineChart>
     </ResponsiveContainer>

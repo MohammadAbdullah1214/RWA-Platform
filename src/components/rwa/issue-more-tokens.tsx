@@ -198,7 +198,7 @@ export function IssueMoreTokens({
               <li>Updates asset.total_tokenized</li>
               <li>Tracks which asset tokens represent</li>
             </ul>
-            <p><strong>Generic Mint</strong> (/manage → Admin → Mint):</p>
+            <p><strong>Generic Mint</strong> (/transfer → Admin → Mint):</p>
             <ul className="list-disc list-inside ml-2">
               <li>Mints generic RWASEC tokens</li>
               <li>NOT tied to any specific asset</li>

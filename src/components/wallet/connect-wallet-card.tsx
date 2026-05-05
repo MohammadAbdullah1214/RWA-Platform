@@ -1,9 +1,12 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Wallet, Sparkles } from "lucide-react";
+import { Wallet } from "lucide-react";
+import { useChain } from "@cosmos-kit/react";
+import { WalletStatus } from "@cosmos-kit/core";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { COSMOS_KIT_CHAIN_NAME } from "@/lib/cosmos-kit-config";
 
 interface ConnectWalletCardProps {
   onConnect: () => void;
@@ -14,6 +17,8 @@ export function ConnectWalletCard({
   onConnect,
   isConnecting,
 }: ConnectWalletCardProps) {
+  const { status, openView } = useChain(COSMOS_KIT_CHAIN_NAME);
+  const isConnected = status === WalletStatus.Connected;
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -51,26 +56,12 @@ export function ConnectWalletCard({
 
           <Button
             size="lg"
-            onClick={onConnect}
-            disabled={isConnecting}
+            onClick={openView}
+            disabled={isConnecting || isConnected}
             className="w-full gap-2 bg-gradient-to-tr from-[#172E7F] to-[#2A5FA6] hover:opacity-90 text-white shadow-lg"
           >
-            {isConnecting ? (
-              <>
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                >
-                  <Sparkles className="h-5 w-5" />
-                </motion.div>
-                Connecting...
-              </>
-            ) : (
-              <>
-                <Wallet className="h-5 w-5" />
-                Connect Wallet
-              </>
-            )}
+            <Wallet className="h-5 w-5" />
+            {isConnected ? "Wallet Connected" : "Connect Wallet"}
           </Button>
         </CardContent>
       </Card>

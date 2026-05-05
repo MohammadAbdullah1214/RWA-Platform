@@ -557,7 +557,7 @@ export const tourSteps: TourStep[] = [
     requiredAction: false,
     validateAction: () => {
       const path = window.location.pathname;
-      return path === '/manage' || path.includes('/manage');
+      return path === '/transfer' || path.includes('/transfer');
     },
     prerequisites: ['submit-issuance'],
     skippable: true,

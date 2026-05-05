@@ -5,8 +5,8 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useWallet } from "@/hooks/use-wallet";
-import { usePermissions } from "@/hooks/use-permissions";
+import { useAppContext } from "@/contexts/app-context";
+import { usePermissionsContext } from "@/contexts/permissions-context";
 
 const menuItems = [
   {
@@ -15,25 +15,29 @@ const menuItems = [
       { name: "Market Overview", href: "/" },
       { name: "Explore Assets", href: "/assets" },
       { name: "KYC Status", href: "/identity" },
+      { name: "Investor Dashboard", href: "/investor" },
       { name: "Identity Management", href: "/admin/identities" },
       { name: "KYC Provider", href: "/kyc-provider" },
       { name: "Token Admin", href: "/token-admin" },
+      { name: "Personnel", href: "/personnel" },
       { name: "Compliance", href: "/compliance" },
       { name: "Issuance", href: "/issuance" },
+      { name: "Activity Logs", href: "/activity-logs" },
     ],
   },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { trexClient, address } = useWallet();
+  const { address } = useAppContext();
   const {
     canSeeAdminIdentities,
     canSeeCompliance,
     canSeeIssuance,
     canSeeKycProvider,
     canSeeAdminTab,
-  } = usePermissions({ trexClient, walletAddress: address });
+    canSeeActivityLogs,
+  } = usePermissionsContext();
 
   const visibleItems = menuItems.map((section) => ({
     ...section,
@@ -41,14 +45,17 @@ export function Sidebar() {
       if (item.href === "/admin/identities") return canSeeAdminIdentities;
       if (item.href === "/kyc-provider") return canSeeKycProvider;
       if (item.href === "/token-admin") return canSeeAdminTab;
+      if (item.href === "/personnel") return canSeeActivityLogs;
       if (item.href === "/compliance") return canSeeCompliance;
       if (item.href === "/issuance") return canSeeIssuance;
+      if (item.href === "/activity-logs") return canSeeActivityLogs;
+      if (item.href === "/investor") return !!address;
       return true;
     }),
   }));
 
   return (
-    <aside className="w-70 h-[calc(100vh-40px)] m-5 flex flex-col glass-panel rounded-[22px] overflow-hidden shrink-0 fixed left-0 top-0 border-r-2 border-[#CBA135]/70">
+    <aside className="w-70 h-[calc(100vh-40px)] m-5 flex flex-col app-sidebar rounded-[26px] overflow-hidden shrink-0 fixed left-0 top-0 border-r-2 border-[#CBA135]/60">
       {/* Logo Section */}
       <div className="p-8 pt-6 pb-6">
         <Link href="/" className="flex items-center gap-2">
@@ -58,13 +65,14 @@ export function Sidebar() {
             width={140}
             height={40}
             className="h-10 w-auto"
+            style={{ width: "auto" }}
             priority
           />
         </Link>
       </div>
 
       {/* Navigation */}
-      <div className="flex-1 px-4 py-2 space-y-5">
+      <div className="flex-1 px-4 py-3 space-y-5">
         {visibleItems.map((section) => (
           <div key={section.category}>
             {section.category && (
@@ -74,16 +82,23 @@ export function Sidebar() {
             )}
             <div className="space-y-1">
               {section.items.map((item) => {
-                const isActive = pathname === item.href;
+                const href =
+                  item.href === "/investor" && address
+                    ? `/investor/${address}`
+                    : item.href;
+                const isActive =
+                  item.href === "/investor"
+                    ? pathname.startsWith("/investor")
+                    : pathname === item.href;
                 return (
                   <Link
                     key={item.name}
-                    href={item.href}
+                    href={href}
                     className={cn(
                       "flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-colors relative group",
                       isActive
-                        ? "text-black font-semibold"
-                        : "text-muted-foreground hover:text-black hover:bg-black/5"
+                        ? "text-slate-900 font-semibold"
+                        : "text-muted-foreground hover:text-slate-900 hover:bg-white/50",
                     )}
                   >
                     {isActive && (
@@ -92,7 +107,7 @@ export function Sidebar() {
                     <span
                       className={cn(
                         isActive ? "translate-x-2" : "",
-                        "transition-transform"
+                        "transition-transform",
                       )}
                     >
                       {item.name}

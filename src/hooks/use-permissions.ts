@@ -1,168 +1,135 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useAppContext } from "@/contexts/app-context";
+import { usePermissionsContext } from "@/contexts/permissions-context";
+import type { PermissionsState as ContextPermissionsState } from "@/contexts/permissions-context";
 import { TREX_CONTRACTS } from "@/lib/zigchain-config";
-import type { ComplianceConfigResponse } from "@/types/trex-contracts";
-import type { TrexClient } from "@/lib/trex-client";
+import { queryCache } from "@/lib/query-cache";
 
-export interface PermissionsState {
-  isFactoryAdmin: boolean;
-  isIdentityRegistryOwner: boolean;
-  isClaimTopicsOwner: boolean;
-  isComplianceOwner: boolean;
-  isTokenOwner: boolean;
-  isTokenIssuer: boolean;
-  isTokenController: boolean;
-  isTokenAgent: boolean;
-  isTrustedIssuer: boolean;
-  canKycProvider: boolean;
-}
+export type PermissionsState = ContextPermissionsState;
 
 interface UsePermissionsOptions {
-  trexClient?: TrexClient | null;
+  trexClient?: unknown;
   walletAddress?: string | null;
   tokenContract?: string | null;
 }
 
-const emptyPermissions: PermissionsState = {
-  isFactoryAdmin: false,
-  isIdentityRegistryOwner: false,
-  isClaimTopicsOwner: false,
-  isComplianceOwner: false,
-  isTokenOwner: false,
-  isTokenIssuer: false,
-  isTokenController: false,
-  isTokenAgent: false,
-  isTrustedIssuer: false,
-  canKycProvider: false,
-};
-
 export function usePermissions(options?: UsePermissionsOptions) {
-  const { trexClient, walletAddress, tokenContract } = options || {};
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [permissions, setPermissions] =
-    useState<PermissionsState>(emptyPermissions);
-  const requestIdRef = useRef(0);
+  const context = usePermissionsContext();
+  const { trexClient, address: walletAddress } = useAppContext();
+  const tokenContract = options?.tokenContract || TREX_CONTRACTS.token;
+  const needsTokenSpecific = tokenContract !== TREX_CONTRACTS.token;
+
+  const [tokenPermissions, setTokenPermissions] = useState<
+    Pick<
+    PermissionsState,
+    "isTokenOwner" | "isTokenIssuer" | "isTokenController" | "isTokenAgent"
+    >
+  >({
+    isTokenOwner: context.permissions.isTokenOwner,
+    isTokenIssuer: context.permissions.isTokenIssuer,
+    isTokenController: context.permissions.isTokenController,
+    isTokenAgent: context.permissions.isTokenAgent,
+  });
+  const [tokenLoading, setTokenLoading] = useState(false);
 
   useEffect(() => {
-    const requestId = ++requestIdRef.current;
-    let isCancelled = false;
+    let cancelled = false;
 
-    const loadPermissions = async () => {
-      if (!trexClient || !walletAddress) {
-        setPermissions(emptyPermissions);
-        setLoading(false);
+    const loadTokenPermissions = async () => {
+      if (!needsTokenSpecific) {
+        setTokenPermissions({
+          isTokenOwner: context.permissions.isTokenOwner,
+          isTokenIssuer: context.permissions.isTokenIssuer,
+          isTokenController: context.permissions.isTokenController,
+          isTokenAgent: context.permissions.isTokenAgent,
+        });
+        setTokenLoading(false);
         return;
       }
 
-      setLoading(true);
-      setError(null);
+      if (!trexClient || !walletAddress) {
+        setTokenPermissions({
+          isTokenOwner: false,
+          isTokenIssuer: false,
+          isTokenController: false,
+          isTokenAgent: false,
+        });
+        setTokenLoading(false);
+        return;
+      }
 
+      setTokenLoading(true);
       try {
-        const normalizedWallet = walletAddress.toLowerCase();
-        const contractToCheck = tokenContract || TREX_CONTRACTS.token;
-
-        const [
-          factoryConfig,
-          identityRegistryConfig,
-          claimTopicsOwner,
-          complianceConfig,
-          tokenRoles,
-          isAgent,
-          issuerTopics,
-        ] = await Promise.all([
-          trexClient.getFactoryConfig().catch(() => null),
-          trexClient.getIdentityRegistryConfig().catch(() => null),
-          trexClient.getClaimTopicsOwner().catch(() => null),
-          trexClient.getComplianceConfig().catch(() => null),
-          trexClient.getRoles(contractToCheck).catch(() => null),
-          trexClient.isAgent(walletAddress, contractToCheck).catch(() => false),
-          trexClient.getIssuerTopics(walletAddress).catch(() => null),
+        const cacheKeyBase = `${tokenContract}:${walletAddress.toLowerCase()}`;
+        const [roles, isAgent] = await Promise.all([
+          queryCache.query(
+            `roles:${tokenContract}`,
+            () => trexClient.getRoles(tokenContract),
+            30_000,
+          ),
+          queryCache.query(
+            `agent:${cacheKeyBase}`,
+            () => trexClient.isAgent(walletAddress, tokenContract),
+            30_000,
+          ),
         ]);
 
-        if (isCancelled || requestId !== requestIdRef.current) {
-          return;
-        }
-
-        const isFactoryAdmin =
-          !!factoryConfig &&
-          factoryConfig.admin.toLowerCase() === normalizedWallet;
-        const isIdentityRegistryOwner =
-          !!identityRegistryConfig &&
-          identityRegistryConfig.owner.toLowerCase() === normalizedWallet;
-        const isClaimTopicsOwner =
-          !!claimTopicsOwner &&
-          claimTopicsOwner.toLowerCase() === normalizedWallet;
-        const isComplianceOwner =
-          !!(complianceConfig as ComplianceConfigResponse | null) &&
-          (complianceConfig as ComplianceConfigResponse).owner.toLowerCase() ===
-            normalizedWallet;
-        const isTokenOwner =
-          !!tokenRoles &&
-          tokenRoles.owner.toLowerCase() === normalizedWallet;
-        const isTokenIssuer =
-          !!tokenRoles &&
-          tokenRoles.issuer.toLowerCase() === normalizedWallet;
-        const isTokenController =
-          !!tokenRoles &&
-          tokenRoles.controller.toLowerCase() === normalizedWallet;
-        const isTokenAgent = !!isAgent;
-        const hasIssuerTopics = !!issuerTopics && issuerTopics.length > 0;
-        const canKycProvider =
-          !!issuerTopics && issuerTopics.includes(1);
-
-        setPermissions({
-          isFactoryAdmin,
-          isIdentityRegistryOwner,
-          isClaimTopicsOwner,
-          isComplianceOwner,
-          isTokenOwner,
-          isTokenIssuer,
-          isTokenController,
-          isTokenAgent,
-          isTrustedIssuer: hasIssuerTopics,
-          canKycProvider,
+        if (cancelled) return;
+        const normalized = walletAddress.toLowerCase();
+        setTokenPermissions({
+          isTokenOwner: roles.owner.toLowerCase() === normalized,
+          isTokenIssuer: roles.issuer.toLowerCase() === normalized,
+          isTokenController: roles.controller.toLowerCase() === normalized,
+          isTokenAgent: isAgent,
         });
-      } catch (err: any) {
-        console.error("Failed to load permissions:", err);
-        setError(err.message || "Failed to load permissions");
+      } catch {
+        if (cancelled) return;
+        setTokenPermissions({
+          isTokenOwner: false,
+          isTokenIssuer: false,
+          isTokenController: false,
+          isTokenAgent: false,
+        });
       } finally {
-        setLoading(false);
+        if (!cancelled) setTokenLoading(false);
       }
     };
 
-    loadPermissions();
+    loadTokenPermissions();
     return () => {
-      isCancelled = true;
+      cancelled = true;
     };
-  }, [trexClient, walletAddress, tokenContract]);
+  }, [
+    needsTokenSpecific,
+    tokenContract,
+    trexClient,
+    walletAddress,
+    context.permissions.isTokenOwner,
+    context.permissions.isTokenIssuer,
+    context.permissions.isTokenController,
+    context.permissions.isTokenAgent,
+  ]);
 
-  const canSeeAdminIdentities = useMemo(
-    () => permissions.isIdentityRegistryOwner || permissions.isTrustedIssuer,
-    [permissions]
-  );
-  const canSeeCompliance =
-    permissions.isComplianceOwner || permissions.isFactoryAdmin;
-  const canSeeIssuance = permissions.isFactoryAdmin;
-  const canSeeKycProvider = permissions.canKycProvider;
+  const mergedPermissions: PermissionsState = {
+    ...context.permissions,
+    ...tokenPermissions,
+  };
+
   const canSeeAdminTab =
-    permissions.isTokenOwner ||
-    permissions.isTokenIssuer ||
-    permissions.isTokenController ||
-    permissions.isTokenAgent ||
-    permissions.isComplianceOwner ||
-    permissions.isClaimTopicsOwner ||
-    permissions.isFactoryAdmin;
+    mergedPermissions.isTokenOwner ||
+    mergedPermissions.isTokenIssuer ||
+    mergedPermissions.isTokenController ||
+    mergedPermissions.isTokenAgent ||
+    mergedPermissions.isComplianceOwner ||
+    mergedPermissions.isClaimTopicsOwner ||
+    mergedPermissions.isFactoryAdmin;
 
   return {
-    permissions,
-    loading,
-    error,
-    canSeeAdminIdentities,
-    canSeeCompliance,
-    canSeeIssuance,
-    canSeeKycProvider,
+    ...context,
+    permissions: mergedPermissions,
+    loading: context.loading || tokenLoading,
     canSeeAdminTab,
   };
 }

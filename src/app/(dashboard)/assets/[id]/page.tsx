@@ -27,7 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useWallet } from "@/hooks/use-wallet";
-import { useAssets } from "@/hooks/use-asets";
+import { useAssetsContext } from "@/contexts/assets-context";
 import { RWAAsset } from "@/types/rwa";
 import { formatCurrency } from "@/lib/utils";
 
@@ -38,17 +38,9 @@ export default function AssetDetailPage({
 }) {
   const resolvedParams = use(params);
   const router = useRouter();
-  const { address, trexClient } = useWallet();
-  const { assets, loading, loadAssets } = useAssets({
-    trexClient,
-    walletAddress: address,
-  });
+  const { address } = useWallet();
+  const { assets, loading } = useAssetsContext();
   const [asset, setAsset] = useState<RWAAsset | null>(null);
-
-  // Load assets on mount (works without wallet connection)
-  useEffect(() => {
-    loadAssets();
-  }, [loadAssets]);
 
   useEffect(() => {
     if (assets.length > 0) {
@@ -478,7 +470,7 @@ export default function AssetDetailPage({
         <Button
           size="lg"
           onClick={() =>
-            router.push(`/manage?asset=${asset.id}&symbol=${asset.symbol}`)
+            router.push(`/transfer?asset=${asset.id}&symbol=${asset.symbol}`)
           }
           className="bg-gradient-to-tr from-[#172E7F] to-[#2A5FA6]"
         >
@@ -487,7 +479,7 @@ export default function AssetDetailPage({
         {/* <Button
           size="lg"
           variant="outline"
-          onClick={() => router.push("/manage")}
+          onClick={() => router.push("/transfer")}
         >
           Transfer Tokens
         </Button> */}

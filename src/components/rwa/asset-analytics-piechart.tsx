@@ -9,14 +9,14 @@ import {
   Tooltip,
 } from "recharts";
 
-const data = [
-  { name: "Private Equity", value: 52.1, color: "#2A5FA6" },
-  { name: "Public Equity", value: 22.8, color: "#AEC7ED" },
-  { name: "Private Credit", value: 13.9, color: "#94E9B8" },
-  { name: "Other", value: 11.2, color: "#92BFFF" },
-];
+type PieDatum = { name: string; value: number; color: string };
 
-const COLORS = data.map((item) => item.color);
+const fallbackData: PieDatum[] = [
+  { name: "Real Estate", value: 44, color: "#2A5FA6" },
+  { name: "Commodities", value: 22, color: "#92BFFF" },
+  { name: "Private Credit", value: 18, color: "#BC953D" },
+  { name: "Equity", value: 16, color: "#94E9B8" },
+];
 
 const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
@@ -54,7 +54,13 @@ const CustomLegend = ({ payload }: any) => {
   );
 };
 
-export function AssetAnalyticsPieChart() {
+export function AssetAnalyticsPieChart({
+  data = fallbackData,
+}: {
+  data?: PieDatum[];
+}) {
+  const colors = data.map((item) => item.color);
+
   return (
     <div className="w-full">
       <div className="flex flex-col items-center">
@@ -73,7 +79,7 @@ export function AssetAnalyticsPieChart() {
               cornerRadius={5}
             >
               {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index]} />
+                <Cell key={`cell-${index}`} fill={colors[index]} />
               ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />

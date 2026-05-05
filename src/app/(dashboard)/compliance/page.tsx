@@ -34,22 +34,16 @@ import {
 } from "@/components/ui/select";
 import { ComplianceBadge } from "@/components/rwa/compliance-badge";
 import { ConnectWalletCard } from "@/components/wallet/connect-wallet-card";
-import { useAssets } from "@/hooks/use-asets";
+import { useAssetsContext } from "@/contexts/assets-context";
 import { useWallet } from "@/hooks/use-wallet";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
-import { usePermissions } from "@/hooks/use-permissions";
+import { usePermissionsContext } from "@/contexts/permissions-context";
 
 export default function CompliancePage() {
-  const { address, trexClient, connectKeplr, isConnecting } = useWallet();
-  const { permissions, loading: permissionsLoading } = usePermissions({
-    trexClient,
-    walletAddress: address,
-  });
-  const { assets, updateCompliance, loading } = useAssets({
-    trexClient,
-    walletAddress: address,
-  });
+  const { address, connectKeplr, isConnecting } = useWallet();
+  const { permissions, loading: permissionsLoading } = usePermissionsContext();
+  const { assets, updateCompliance, loading } = useAssetsContext();
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [selectedJurisdiction, setSelectedJurisdiction] =
@@ -308,10 +302,10 @@ export default function CompliancePage() {
                               status === "compliant"
                                 ? "bg-green-500"
                                 : status === "pending"
-                                ? "bg-yellow-500"
-                                : status === "non-compliant"
-                                ? "bg-red-500"
-                                : "bg-blue-500" 
+                                  ? "bg-yellow-500"
+                                  : status === "non-compliant"
+                                    ? "bg-red-500"
+                                    : "bg-blue-500"
                             }`}
                           />
                         </div>
@@ -335,13 +329,13 @@ export default function CompliancePage() {
                     Run Compliance Check
                   </Button>
                   <Link href="/kyc-provider">
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start gap-2"
-                  >
-                    <Users className="h-4 w-4" />
-                    Review KYC Applications
-                  </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start gap-2"
+                    >
+                      <Users className="h-4 w-4" />
+                      Review KYC Applications
+                    </Button>
                   </Link>
                   <Button
                     variant="outline"

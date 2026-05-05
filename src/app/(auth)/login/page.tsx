@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useWallet } from '@/hooks/use-wallet';
+import { apiFetch, storeTokens } from '@/lib/backend';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,8 +30,18 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const tokens = await apiFetch<{ accessToken: string; refreshToken: string }>(
+        "/auth/login",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            email: formData.email,
+            password: formData.password,
+          }),
+        }
+      );
+
+      storeTokens(tokens);
       
       toast.success('Login successful!');
       router.push('/dashboard');
@@ -52,17 +63,17 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/10 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-[radial-gradient(circle_at_top,_#e8eefc,_transparent_55%),linear-gradient(135deg,_#f6f7fb,_#eef2ff)] p-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
         className="w-full max-w-md"
       >
-        <Card className="border-0 shadow-2xl">
+        <Card className="border border-slate-200/70 shadow-2xl rounded-3xl bg-white/80 backdrop-blur">
           <CardHeader className="space-y-1">
             <div className="flex justify-center mb-4">
-              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center">
+              <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-[#172E7F] to-[#2A5FA6] flex items-center justify-center shadow-lg">
                 <Lock className="h-6 w-6 text-white" />
               </div>
             </div>
@@ -83,7 +94,7 @@ export default function LoginPage() {
               <Button
                 onClick={handleWalletConnect}
                 disabled={isConnecting}
-                className="w-full gap-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
+                className="w-full gap-2 bg-gradient-to-r from-[#172E7F] to-[#2A5FA6] hover:opacity-90"
                 size="lg"
               >
                 <Wallet className="h-5 w-5" />
@@ -96,7 +107,7 @@ export default function LoginPage() {
                 <span className="w-full border-t" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">
+                <span className="bg-white/80 px-2 text-muted-foreground">
                   Or continue with
                 </span>
               </div>
@@ -112,7 +123,7 @@ export default function LoginPage() {
                     id="email"
                     type="email"
                     placeholder="name@example.com"
-                    className="pl-10"
+                    className="pl-10 bg-white/90 border-slate-200/70 focus:bg-white"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     required
@@ -127,8 +138,8 @@ export default function LoginPage() {
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    className="pl-10 pr-10"
+                    placeholder="Password"
+                    className="pl-10 pr-10 bg-white/90 border-slate-200/70 focus:bg-white"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     required
@@ -164,7 +175,7 @@ export default function LoginPage() {
 
               <Button
                 type="submit"
-                className="w-full"
+                className="w-full bg-gradient-to-r from-[#172E7F] to-[#2A5FA6] hover:opacity-90"
                 disabled={isLoading}
               >
                 {isLoading ? 'Signing in...' : 'Sign In'}

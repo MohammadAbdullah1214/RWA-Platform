@@ -22,24 +22,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { IssuanceForm } from "@/components/rwa/issuance-form";
 import { ConnectWalletCard } from "@/components/wallet/connect-wallet-card";
-import { useAssets } from "@/hooks/use-asets";
+import { useAssetsContext } from "@/contexts/assets-context";
 import { useWallet } from "@/hooks/use-wallet";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
-import { usePermissions } from "@/hooks/use-permissions";
+import { usePermissionsContext } from "@/contexts/permissions-context";
 
 export default function IssuancePage() {
-  const { address, trexClient, connectKeplr, isConnecting } = useWallet();
-  const { canSeeIssuance, loading: permissionsLoading } = usePermissions({
-    trexClient,
-    walletAddress: address,
-  });
-  const { assets, loading } = useAssets({ trexClient, walletAddress: address });
+  const { address, connectKeplr, isConnecting } = useWallet();
+  const { canSeeIssuance, loading: permissionsLoading } =
+    usePermissionsContext();
+  const { assets, loading } = useAssetsContext();
   const [activeTab, setActiveTab] = useState("new");
 
   const recentIssuances = assets.slice(0, 3);
   const pendingIssuances = assets.filter(
-    (asset) => asset.complianceStatus === "pending"
+    (asset) => asset.complianceStatus === "pending",
   );
 
   const stats = {
@@ -91,29 +89,22 @@ export default function IssuancePage() {
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <Card className="border-primary/50 bg-primary/5">
+        <Card className="bg-gradient-to-tr from-[#172E7F] to-[#2A5FA6] rounded-2xl">
           <CardContent className="pt-6">
             <div className="flex items-start gap-4">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Building2 className="h-5 w-5 text-primary" />
+              <div className="p-2 rounded-lg bg-[#CAA141]">
+                <Shield className="h-6 w-6" />
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold mb-1">
-                  Create Dedicated Token Contract
+                  ERC-3643 Multi-Token Architecture
                 </h3>
-                <p className="text-sm text-muted-foreground mb-2">
+                <p className="text-sm text-black/90">
                   When you create a new asset, the Factory will instantiate a
                   dedicated CW3643 token contract for it. Each asset gets its
                   own independent token with unique symbol, supply, and
                   balances.
                 </p>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Shield className="h-3 w-3" />
-                  <span>
-                    CW-3643 compliant • Shared compliance infrastructure •
-                    Individual token contracts
-                  </span>
-                </div>
               </div>
             </div>
           </CardContent>
@@ -124,46 +115,40 @@ export default function IssuancePage() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="space-y-4"
+        className="mb-6"
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">
-              Asset Issuance
-            </h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-3xl font-semibold">Asset Issuance</h1>
+            <p className="text-slate-600 mt-1">
               Tokenize real-world assets on ZigChain with full compliance
             </p>
           </div>
-          <Button
-            onClick={handleQuickIssue}
-            className="gap-2 bg-gradient-to-tr from-[#172E7F] to-[#2A5FA6]"
-          >
+          <Button onClick={handleQuickIssue} className="gap-2">
             <Building2 className="h-4 w-4" />
             Quick Issue
           </Button>
         </div>
 
-        <Alert>
+        <Alert className="mb-4">
           <AlertDescription>
-            Factory admin creates new asset tokens here. Issuers mint and
-            distribute tokens from the Token Admin page after issuance.
+            Factory admin creates the token contract here. Next, the token owner
+            must create the token asset entry in Token Admin. Issuers submit
+            issuance requests and controllers approve them to mint.
           </AlertDescription>
         </Alert>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
           <Card className="bg-white rounded-2xl">
             <CardContent className="pt-6">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Total Issued
-                  </p>
-                  <Building2 className="h-4 w-4 text-primary" />
+                  <p className="text-[17px] font-semibold">Total Tokens</p>
+                  <Building2 className="h-5 w-5 text-blue-600" />
                 </div>
                 <p className="text-2xl font-bold">{stats.totalIssued}</p>
-                <p className="text-xs text-muted-foreground">Assets</p>
+                <p className="text-xs text-slate-500">Assets</p>
               </div>
             </CardContent>
           </Card>
@@ -172,15 +157,13 @@ export default function IssuancePage() {
             <CardContent className="pt-6">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Total Value
-                  </p>
-                  <TrendingUp className="h-4 w-4 text-green-500" />
+                  <p className="text-[17px] font-semibold">Total Value</p>
+                  <TrendingUp className="h-5 w-5 text-green-600" />
                 </div>
                 <p className="text-2xl font-bold">
                   {formatCurrency(stats.totalValue)}
                 </p>
-                <p className="text-xs text-muted-foreground">Tokenized</p>
+                <p className="text-xs text-slate-500">Tokenized</p>
               </div>
             </CardContent>
           </Card>
@@ -189,15 +172,11 @@ export default function IssuancePage() {
             <CardContent className="pt-6">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Pending Review
-                  </p>
-                  <FileText className="h-4 w-4 text-yellow-500" />
+                  <p className="text-[17px] font-semibold">Pending Review</p>
+                  <FileText className="h-5 w-5 text-amber-600" />
                 </div>
                 <p className="text-2xl font-bold">{stats.pendingReview}</p>
-                <p className="text-xs text-muted-foreground">
-                  Awaiting approval
-                </p>
+                <p className="text-xs text-slate-500">Awaiting approval</p>
               </div>
             </CardContent>
           </Card>
@@ -206,15 +185,13 @@ export default function IssuancePage() {
             <CardContent className="pt-6">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Avg Tokenization
-                  </p>
-                  <CheckCircle className="h-4 w-4 text-blue-500" />
+                  <p className="text-[17px] font-semibold">Avg Tokenization</p>
+                  <CheckCircle className="h-5 w-5 text-purple-600" />
                 </div>
                 <p className="text-2xl font-bold">
                   {stats.avgTokenization.toFixed(1)}%
                 </p>
-                <p className="text-xs text-muted-foreground">Of total supply</p>
+                <p className="text-xs text-slate-500">Of total supply</p>
               </div>
             </CardContent>
           </Card>
@@ -227,28 +204,28 @@ export default function IssuancePage() {
         onValueChange={setActiveTab}
         className="space-y-6"
       >
-        <TabsList className="rounded-xl p-1">
+        <TabsList className="w-fit grid grid-cols-4 p-1 bg-[#F1F2F4] rounded-xl h-auto">
           <TabsTrigger
             value="new"
-            className="data-[state=active]:bg-gradient-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white"
+            className="rounded-lg data-[state=active]:bg-gradient-to-br data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
           >
-            New Issuance
+            New Token
           </TabsTrigger>
           <TabsTrigger
             value="recent"
-            className="data-[state=active]:bg-gradient-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white"
+            className="rounded-lg data-[state=active]:bg-gradient-to-br data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
           >
-            Recent
+            Recent Tokens
           </TabsTrigger>
           <TabsTrigger
             value="pending"
-            className="data-[state=active]:bg-gradient-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white"
+            className="rounded-lg data-[state=active]:bg-gradient-to-br data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
           >
             Pending Review
           </TabsTrigger>
           <TabsTrigger
             value="templates"
-            className="data-[state=active]:bg-gradient-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white"
+            className="rounded-lg data-[state=active]:bg-gradient-to-br data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
           >
             Templates
           </TabsTrigger>
@@ -260,11 +237,12 @@ export default function IssuancePage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Building2 className="h-5 w-5" />
-                Issue New Asset
+                Create New Asset Token
               </CardTitle>
               <CardDescription>
-                Complete the form below to tokenize a new real-world asset on
-                ZigChain
+                Create a token contract for a new real-world asset on ZigChain.
+                Token issuance happens after the owner creates the token asset
+                entry.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -277,9 +255,9 @@ export default function IssuancePage() {
         <TabsContent value="recent" className="space-y-6">
           <Card className="bg-white rounded-2xl">
             <CardHeader>
-              <CardTitle>Recent Issuances</CardTitle>
+              <CardTitle>Recent Tokens</CardTitle>
               <CardDescription>
-                Assets issued in the last 30 days
+                Assets created in the last 30 days
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -371,7 +349,7 @@ export default function IssuancePage() {
                             <p className="text-sm text-muted-foreground">
                               Submitted{" "}
                               {new Date(
-                                asset.issuanceDate
+                                asset.issuanceDate,
                               ).toLocaleDateString()}
                             </p>
                           </div>

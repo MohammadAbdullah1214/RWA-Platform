@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Shield,
@@ -20,12 +21,15 @@ import {
   AlertCircle,
   ExternalLink,
   RefreshCw,
-  UserCheck,
+  ClipboardCheck,
 } from "lucide-react";
-import { getApplicationByWallet, type KycApplication } from "@/lib/kyc-storage";
+import {
+  getKycApplicationByWallet,
+  type KycApplication,
+} from "@/lib/kyc-api";
 
 export default function IdentityPage() {
-  const { address, trexClient, connectKeplr, isConnected } = useWallet();
+  const { address, connectKeplr, isConnected } = useWallet();
   const {
     identity,
     loading,
@@ -34,53 +38,63 @@ export default function IdentityPage() {
     hasOnchainId,
     isVerified,
     claims,
-  } = useIdentity({ trexClient, walletAddress: address });
+  } = useIdentity();
 
   const [kycApplication, setKycApplication] = useState<KycApplication | null>(
     null
   );
-  const [issuerTopics, setIssuerTopics] = useState<number[] | null>(null);
-  const [checkingIssuer, setCheckingIssuer] = useState(false);
+
+  const applicationStatus = kycApplication?.status ?? "NOT_STARTED";
+  const applicationStatusLabel =
+    applicationStatus === "PENDING"
+      ? "Under Review"
+      : applicationStatus === "UNDER_REVIEW"
+      ? "Under Review"
+      : applicationStatus === "APPROVED"
+      ? "Approved"
+      : applicationStatus === "REJECTED"
+      ? "Needs Resubmission"
+      : "Not Submitted";
+  const applicationStatusDescription =
+    applicationStatus === "PENDING"
+      ? "Your application is being reviewed by a KYC provider."
+      : applicationStatus === "UNDER_REVIEW"
+      ? "Your application is being reviewed by a KYC provider."
+      : applicationStatus === "APPROVED"
+      ? "KYC approved. Claims and registry are being finalized."
+      : applicationStatus === "REJECTED"
+      ? "Review feedback is available. Please resubmit."
+      : "Start your KYC application to unlock trading.";
+  const currentStep =
+    applicationStatus === "APPROVED" || hasOnchainId || isVerified
+      ? 3
+      : applicationStatus === "PENDING" || applicationStatus === "UNDER_REVIEW"
+      ? 2
+      : 1;
 
   // Load KYC application from localStorage
   useEffect(() => {
-    if (address) {
-      const app = getApplicationByWallet(address);
+    const loadKyc = async () => {
+      if (!address) return;
+      const app = await getKycApplicationByWallet(address);
       setKycApplication(app);
-    }
-  }, [address]);
-
-  // Check if user is a trusted issuer
-  useEffect(() => {
-    const checkIssuerStatus = async () => {
-      if (trexClient && address) {
-        setCheckingIssuer(true);
-        try {
-          const topics = await trexClient.getIssuerTopics(address);
-          setIssuerTopics(topics);
-        } catch (error) {
-          console.error("Failed to check issuer status:", error);
-        } finally {
-          setCheckingIssuer(false);
-        }
-      }
     };
-    checkIssuerStatus();
-  }, [trexClient, address]);
+    loadKyc();
+  }, [address]);
 
   if (!isConnected) {
     return (
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="text-center py-12">
           <Shield className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-          <h1 className="text-2xl font-bold mb-2">Identity Management</h1>
+          <h1 className="text-2xl font-bold mb-2">Investor KYC</h1>
           <p className="text-muted-foreground mb-6">
-            Connect your wallet to manage your on-chain identity
+            Connect your wallet to start your verification journey
           </p>
           <Button
             onClick={connectKeplr}
             size="lg"
-            className="bg-gradient-to-tr from-[#172E7F] to-[#2A5FA6]"
+            className="bg-linear-to-tr from-[#172E7F] to-[#2A5FA6]"
           >
             Connect Wallet
           </Button>
@@ -93,16 +107,15 @@ export default function IdentityPage() {
     <div className="p-8 glass-panel rounded-[22px]">
       {/* Header */}
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-gradient-to-tr from-[#172E7F] to-[#2A5FA6]">
+            <div className="p-2 rounded-lg bg-linear-to-tr from-[#172E7F] to-[#2A5FA6]">
               <Shield className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">Identity Management</h1>
+              <h1 className="text-2xl font-bold">Investor KYC</h1>
               <p className="text-sm text-gray-600">
-                Manage your on-chain identity for compliant security token
-                trading
+                One guided flow to verify your identity and unlock trading
               </p>
             </div>
           </div>
@@ -115,13 +128,181 @@ export default function IdentityPage() {
         </div>
       </div>
 
-      <Alert className="mb-6">
-        <AlertDescription>
-          Investors submit KYC applications here. KYC providers add claims and
-          create OnchainIDs. Identity Registry owners register verified wallets
-          before trading is enabled.
-        </AlertDescription>
-      </Alert>
+      <div className="grid gap-4 md:grid-cols-4 mb-6">
+        <Card
+          className={`rounded-2xl border ${
+            currentStep >= 1
+              ? "border-blue-200 bg-blue-50/60 shadow-sm"
+              : "bg-white"
+          }`}
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Step 1</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-base font-semibold">Submit KYC</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Provide your identity details and documents.
+            </p>
+          </CardContent>
+        </Card>
+        <Card
+          className={`rounded-2xl border ${
+            currentStep >= 2
+              ? "border-blue-200 bg-blue-50/60 shadow-sm"
+              : "bg-white"
+          }`}
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Step 2</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-base font-semibold">KYC Review</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              A trusted provider validates your submission.
+            </p>
+          </CardContent>
+        </Card>
+        <Card
+          className={`rounded-2xl border ${
+            currentStep >= 3
+              ? "border-blue-200 bg-blue-50/60 shadow-sm"
+              : "bg-white"
+          }`}
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Step 3</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-base font-semibold">OnChainID & Claims</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Your OnChainID and KYC claims are created.
+            </p>
+          </CardContent>
+        </Card>
+        <Card
+          className={`rounded-2xl border ${
+            isVerified
+              ? "border-green-200 bg-green-50/60 shadow-sm"
+              : "bg-white"
+          }`}
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Step 4</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-base font-semibold">Trade Enabled</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              You can hold and transfer compliant assets.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50/70 px-6 py-4">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          {[
+            { label: "Submit KYC", step: 1 },
+            { label: "KYC Review", step: 2 },
+            { label: "OnChainID & Claims", step: 3 },
+            { label: "Trade Enabled", step: 4 },
+          ].map((item, index, arr) => {
+            const isActive =
+              item.step === 4 ? isVerified : currentStep >= item.step;
+            return (
+              <div key={item.label} className="flex items-center gap-3">
+                <div
+                  className={`flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
+                    isActive
+                      ? "bg-blue-600 text-white"
+                      : "bg-white text-slate-500 border border-slate-200"
+                  }`}
+                >
+                  <span className="text-[10px] uppercase tracking-[0.18em]">
+                    Step {item.step}
+                  </span>
+                  <span>{item.label}</span>
+                </div>
+                {index < arr.length - 1 && (
+                  <span className="h-px w-8 bg-blue-200" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-xs text-blue-700">
+          You are currently in{" "}
+          <span className="font-semibold">{applicationStatusLabel}</span>.
+        </p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3 mb-6">
+        <Card className="bg-white rounded-2xl">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">
+              Application Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-semibold">{applicationStatusLabel}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {applicationStatusDescription}
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="bg-white rounded-2xl">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">OnChainID</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {hasOnchainId && identity?.onchainIdAddress ? (
+              <div className="space-y-2">
+                <p className="text-sm font-mono text-slate-700">
+                  {identity.onchainIdAddress.slice(0, 24)}...
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    window.open(
+                      `https://testnet.ping.pub/zigchain/account/${identity.onchainIdAddress}`,
+                      "_blank"
+                    )
+                  }
+                >
+                  View on explorer
+                  <ExternalLink className="h-3 w-3 ml-2" />
+                </Button>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                OnChainID will be created by the KYC provider after review.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="bg-white rounded-2xl">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Verification</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isVerified ? (
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <span className="text-sm font-semibold">Verified</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-yellow-600" />
+                <span className="text-sm font-semibold">Pending</span>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground mt-2">
+              {identity?.verificationReason || "Awaiting trusted issuer claims."}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Error Alert */}
       {error && (
@@ -132,32 +313,24 @@ export default function IdentityPage() {
         </Alert>
       )}
 
-      {/* Verification Status Banner */}
-      {kycApplication?.status === "approved" && !hasOnchainId && (
-        <Alert className="mb-6 border-blue-200 bg-blue-50 rounded-xl">
-          <UserCheck className="h-4 w-4 text-blue-600" />
-          <AlertTitle className="text-blue-900">
-            KYC Approved - Processing Complete
-          </AlertTitle>
-          <AlertDescription className="text-blue-700">
-            Your KYC has been approved! OnchainID created, claims added, and
-            identity registered. Click "Refresh" above to update your
-            verification status.
+      {applicationStatus === "REJECTED" && (
+        <Alert className="mb-6 border-red-200 bg-red-50 rounded-xl">
+          <AlertCircle className="h-4 w-4 text-red-600" />
+          <AlertTitle className="text-red-900">Action Required</AlertTitle>
+          <AlertDescription className="text-red-700">
+            {kycApplication?.rejectionReason ||
+              "Your submission needs updates. Please resubmit with corrected information."}
           </AlertDescription>
         </Alert>
       )}
 
-      {hasOnchainId && !isVerified && (
-        <Alert className="mb-6 border-yellow-200 bg-yellow-50 rounded-xl">
-          <AlertCircle className="h-4 w-4 text-yellow-600" />
-          <AlertTitle className="text-yellow-900">
-            Identity Registered - Verifying Claims
-          </AlertTitle>
-          <AlertDescription className="text-yellow-700">
-            Your identity is registered in the Identity Registry. System is
-            verifying your claims from trusted issuers. If you have valid KYC &
-            AML claims, you should be verified. Click "Refresh" to update
-            status.
+      {applicationStatus === "APPROVED" && !isVerified && (
+        <Alert className="mb-6 border-blue-200 bg-blue-50 rounded-xl">
+          <CheckCircle className="h-4 w-4 text-blue-600" />
+          <AlertTitle className="text-blue-900">KYC Approved</AlertTitle>
+          <AlertDescription className="text-blue-700">
+            Your KYC is approved. We are finalizing OnChainID claims and
+            registry registration. Refresh to see updates.
           </AlertDescription>
         </Alert>
       )}
@@ -167,34 +340,8 @@ export default function IdentityPage() {
           <CheckCircle className="h-4 w-4 text-green-600" />
           <AlertTitle className="text-green-900">Fully Verified</AlertTitle>
           <AlertDescription className="text-green-700">
-            Your identity is fully verified! You can now trade security tokens
+            Your identity is fully verified. You can now trade security tokens
             on this platform.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Trusted Issuer Status Banner */}
-      {issuerTopics && issuerTopics.length > 0 && (
-        <Alert className="mb-6 border-purple-200 bg-purple-50 rounded-xl">
-          <Shield className="h-4 w-4 text-purple-600" />
-          <AlertTitle className="text-purple-900">Trusted Issuer</AlertTitle>
-          <AlertDescription className="text-purple-700">
-            You are registered as a Trusted Issuer and can add claims for
-            topics:{" "}
-            {issuerTopics
-              .map((t) => {
-                const topicNames: Record<number, string> = {
-                  1: "KYC",
-                  2: "AML",
-                  3: "Accredited Investor",
-                  4: "Residency",
-                  5: "Age Verification",
-                };
-                return topicNames[t] || `Topic ${t}`;
-              })
-              .join(", ")}
-            . Go to <strong>/manage → Identity tab</strong> to add claims to any
-            OnchainID.
           </AlertDescription>
         </Alert>
       )}
@@ -204,48 +351,77 @@ export default function IdentityPage() {
         {/* Left Column: KYC Application or Identity Status */}
         <div className="space-y-4">
           {/* KYC Application Form */}
-          {address && !isVerified && kycApplication?.status !== "approved" && (
+          {address && !isVerified && kycApplication?.status !== "APPROVED" && (
             <KycApplicationForm
               walletAddress={address}
               existingApplication={kycApplication}
             />
           )}
 
-          {/* Info Card - How it works */}
+          {/* Application Details */}
           <Card className="bg-white rounded-2xl shadow-sm border border-gray-100">
             <CardHeader>
-              <CardTitle className="text-lg">How Verification Works</CardTitle>
+              <CardTitle className="text-lg">Application Details</CardTitle>
+              <CardDescription>
+                Track your submission timeline and next steps.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="text-sm space-y-2">
-              <p className="text-gray-600">
-                To trade compliant security tokens, you need to complete a
-                multi-step verification process following the T-REX standard.
-              </p>
-              <div className="pt-2 space-y-1">
-                <p className="font-medium">Verification Steps:</p>
-                <ol className="list-decimal list-inside space-y-1 text-gray-600">
-                  <li>
-                    <strong>Submit KYC:</strong> Provide your identity documents
-                    and information
-                  </li>
-                  <li>
-                    <strong>KYC Review:</strong> Licensed KYC provider reviews
-                    and creates your OnchainID
-                  </li>
-                  <li>
-                    <strong>Whitelist:</strong> Platform issuer adds you to the
-                    Identity Registry
-                  </li>
-                  <li>
-                    <strong>Claims Added:</strong> KYC provider adds
-                    verification claims (KYC, AML)
-                  </li>
-                  <li>
-                    <strong>Trade:</strong> You can now trade security tokens
-                    compliantly
-                  </li>
-                </ol>
+            <CardContent className="text-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Status</span>
+                <Badge
+                  variant={
+                    applicationStatus === "APPROVED"
+                      ? "default"
+                      : applicationStatus === "REJECTED"
+                      ? "destructive"
+                      : applicationStatus === "PENDING" ||
+                        applicationStatus === "UNDER_REVIEW"
+                      ? "secondary"
+                      : "outline"
+                  }
+                >
+                  {applicationStatusLabel}
+                </Badge>
               </div>
+
+              {kycApplication ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Submitted</span>
+                    <span className="text-xs text-slate-700">
+                      {new Date(kycApplication.submittedAt).toLocaleString()}
+                    </span>
+                  </div>
+                  {kycApplication.reviewedAt && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Reviewed</span>
+                      <span className="text-xs text-slate-700">
+                        {new Date(kycApplication.reviewedAt).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  {kycApplication.reviewedBy && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Reviewer</span>
+                      <span className="text-xs font-mono text-slate-700">
+                        {kycApplication.reviewedBy.slice(0, 12)}...
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No submission yet. Start your KYC application to begin.
+                </p>
+              )}
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                Next steps: A trusted provider verifies your documents, creates
+                an OnChainID, and adds KYC claims. The registry owner registers
+                you before trading is enabled.
+              </div>
+
               <Button
                 variant="link"
                 className="p-0 h-auto text-xs"
@@ -256,7 +432,7 @@ export default function IdentityPage() {
                   )
                 }
               >
-                Learn more about T-REX Standard{" "}
+                Learn more about T-REX Standard
                 <ExternalLink className="h-3 w-3 ml-1" />
               </Button>
             </CardContent>

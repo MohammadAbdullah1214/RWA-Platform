@@ -5,8 +5,10 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { TrexClient } from '@/lib/trex-client';
+import { formatTokenAmount, parseTokenAmount } from '@/lib/token-utils';
+import { queryCache } from '@/lib/query-cache';
 import { TokenInfoFromFactory } from '@/types/trex-contracts';
 
 export interface FactoryAsset extends TokenInfoFromFactory {
@@ -48,7 +50,11 @@ export function useFactoryAssets(trexClient: TrexClient | null): FactoryAssetDat
     setError(null);
 
     try {
-      const tokens = await trexClient.getAllFactoryTokens();
+      const tokens = await queryCache.query(
+        'factory:tokens',
+        () => trexClient.getAllFactoryTokens(),
+        30_000,
+      );
       
       // Parse metadata for each token
       const assetsWithParsed: FactoryAsset[] = tokens.map(token => ({
@@ -97,7 +103,10 @@ export function useFactoryAssets(trexClient: TrexClient | null): FactoryAssetDat
     assets,
     isLoading,
     error,
-    refresh: fetchAssets,
+    refresh: async () => {
+      queryCache.invalidate('factory:tokens');
+      await fetchAssets();
+    },
     getAssetById,
     getAssetByContract,
   };
@@ -124,21 +133,46 @@ export function useTokenBalance(
 ) {
   const [balance, setBalance] = useState<string>('0');
   const [isLoading, setIsLoading] = useState(false);
+  const lastFetchRef = useRef<{ key: string; at: number } | null>(null);
+  const inFlightKeyRef = useRef<string | null>(null);
 
   const fetchBalance = useCallback(async () => {
     if (!trexClient || !tokenContract || !walletAddress) {
-      setBalance('0');
+      setBalance((prev) => (prev === '0' ? prev : '0'));
+      setIsLoading(false);
+      inFlightKeyRef.current = null;
       return;
     }
 
+    const requestKey = `${tokenContract}:${walletAddress}`;
+    const now = Date.now();
+
+    if (inFlightKeyRef.current === requestKey) {
+      return;
+    }
+
+    const lastFetch = lastFetchRef.current;
+    if (lastFetch && lastFetch.key === requestKey && now - lastFetch.at < 1500) {
+      return;
+    }
+
+    inFlightKeyRef.current = requestKey;
     setIsLoading(true);
     try {
-      const bal = await trexClient.getBalanceForToken(tokenContract, walletAddress);
-      setBalance(bal);
+      const bal = await queryCache.query(
+        `balance:${requestKey}`,
+        () => trexClient.getBalanceForToken(tokenContract, walletAddress),
+        10_000,
+      );
+      setBalance((prev) => (prev === bal ? prev : bal));
+      lastFetchRef.current = { key: requestKey, at: Date.now() };
     } catch (err) {
       console.error('Failed to fetch token balance:', err);
-      setBalance('0');
+      setBalance((prev) => (prev === '0' ? prev : '0'));
     } finally {
+      if (inFlightKeyRef.current === requestKey) {
+        inFlightKeyRef.current = null;
+      }
       setIsLoading(false);
     }
   }, [trexClient, tokenContract, walletAddress]);
@@ -153,27 +187,4 @@ export function useTokenBalance(
 /**
  * Format token amount with decimals
  */
-export function formatTokenAmount(amount: string, decimals: number = 6): string {
-  try {
-    const num = parseFloat(amount) / Math.pow(10, decimals);
-    return num.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: decimals,
-    });
-  } catch {
-    return '0.00';
-  }
-}
-
-/**
- * Parse amount to base units (micro tokens)
- */
-export function parseTokenAmount(amount: string, decimals: number = 6): string {
-  try {
-    const num = parseFloat(amount);
-    if (isNaN(num)) return '0';
-    return Math.floor(num * Math.pow(10, decimals)).toString();
-  } catch {
-    return '0';
-  }
-}
+export { formatTokenAmount, parseTokenAmount };

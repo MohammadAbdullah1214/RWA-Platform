@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useWallet } from "@/hooks/use-wallet";
+import { apiFetch } from "@/lib/backend";
 import {
   Card,
   CardContent,
@@ -61,6 +62,17 @@ interface IssuanceRedemptionManagerProps {
   onUpdate?: () => void;
 }
 
+interface IssuanceRequest {
+  id: string;
+  tokenContract: string;
+  assetId: string;
+  recipient: string;
+  amount: string;
+  status: string;
+  txHash?: string | null;
+  createdAt?: string;
+}
+
 /**
  * Issuance and Redemption Manager
  *
@@ -93,11 +105,17 @@ export function IssuanceRedemptionManager({
   const [issuerBalance, setIssuerBalance] = useState<string>("0");
   const [viewerBalance, setViewerBalance] = useState<string>("0");
   const [lastIssuance, setLastIssuance] = useState<{
-    requestId: number;
+    requestId: string;
     recipient: string;
     amount: string;
-    txHash: string;
+    txHash?: string;
   } | null>(null);
+  const [issuanceRequests, setIssuanceRequests] = useState<IssuanceRequest[]>(
+    []
+  );
+  const [issuanceLoading, setIssuanceLoading] = useState(false);
+  const [selectedIssuanceRequestId, setSelectedIssuanceRequestId] =
+    useState("");
 
   // Request redemption form
   const [assetId, setAssetId] = useState("1");  
@@ -112,6 +130,7 @@ export function IssuanceRedemptionManager({
   useEffect(() => {
     loadData();
     loadAssetContext();
+    loadIssuanceRequests();
   }, [trexClient, tokenContract]);
 
   useEffect(() => {
@@ -227,6 +246,22 @@ export function IssuanceRedemptionManager({
       setAssetContextError("Failed to load asset details for this token.");
     } finally {
       setAssetContextLoading(false);
+    }
+  };
+
+  const loadIssuanceRequests = async () => {
+    if (!tokenContract) return;
+
+    try {
+      setIssuanceLoading(true);
+      const requests = await apiFetch<IssuanceRequest[]>(
+        `/issuance-requests?tokenContract=${encodeURIComponent(tokenContract)}`
+      );
+      setIssuanceRequests(requests);
+    } catch (error) {
+      console.error("Failed to load issuance requests:", error);
+    } finally {
+      setIssuanceLoading(false);
     }
   };
 
@@ -377,7 +412,7 @@ export function IssuanceRedemptionManager({
   };
 
   const handleIssueAsset = async () => {
-    if (!trexClient || !tokenContract || !issueRecipient || !issueAmount) {
+    if (!tokenContract || !issueRecipient || !issueAmount) {
       toast.error("Please fill in all fields");
       return;
     }
@@ -391,58 +426,140 @@ export function IssuanceRedemptionManager({
 
     try {
       setLoading(true);
-      toast.loading("Issuing tokens...");
+      toast.loading("Submitting issuance request...");
 
-      const txHash = await trexClient.issueAsset(
-        parseInt(issueAssetId),
+      const request = await apiFetch<IssuanceRequest>("/issuance-requests", {
+        method: "POST",
+        body: JSON.stringify({
+          tokenContract,
+          assetId: issueAssetId,
+          recipient: issueRecipient,
+          amount: issueAmount,
+        }),
+      });
+
+      toast.dismiss();
+      toast.success("Issuance request submitted", {
+        description: `Request #${request.id} for ${issueAmount} tokens`,
+      });
+
+      setLastIssuance({
+        requestId: request.id,
+        recipient: issueRecipient,
+        amount: issueAmount,
+      });
+
+      await loadIssuanceRequests();
+      onUpdate?.();
+    } catch (error: any) {
+      toast.dismiss();
+      console.error("Issuance request failed:", error);
+
+      if (error.message?.includes("Unauthorized")) {
+        toast.error("Unauthorized", {
+          description: "Only the issuer can request issuance",
+        });
+      } else {
+        toast.error("Issuance request failed", {
+          description: error.message || "Unknown error occurred",
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApproveIssuance = async (requestId: string) => {
+    try {
+      setLoading(true);
+      await apiFetch(`/issuance-requests/${requestId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "APPROVED", txHash: "offchain" }),
+      });
+      toast.success("Issuance request approved");
+      await loadIssuanceRequests();
+    } catch (error: any) {
+      console.error("Approve issuance failed:", error);
+      toast.error("Failed to approve issuance", {
+        description: error.message || "Unknown error occurred",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRejectIssuance = async (requestId: string) => {
+    try {
+      setLoading(true);
+      await apiFetch(`/issuance-requests/${requestId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "REJECTED", txHash: "offchain" }),
+      });
+      toast.success("Issuance request rejected");
+      await loadIssuanceRequests();
+    } catch (error: any) {
+      console.error("Reject issuance failed:", error);
+      toast.error("Failed to reject issuance", {
+        description: error.message || "Unknown error occurred",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMintApproved = async () => {
+    if (!trexClient || !tokenContract) {
+      toast.error("Please connect your wallet first");
+      return;
+    }
+
+    if (!selectedApprovedRequest) {
+      toast.error("No approved issuance request selected");
+      return;
+    }
+
+    if (!amountMatchesApproval) {
+      toast.error("Issuance amount mismatch", {
+        description: `You are only allowed to issue ${approvedAmount} tokens.`,
+      });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      toast.loading("Issuing approved tokens...");
+
+      const txHash = await trexClient.mint(
         issueRecipient,
         issueAmount,
         tokenContract
       );
 
+      await apiFetch(`/issuance-requests/${selectedApprovedRequest.id}/mint`, {
+        method: "PATCH",
+        body: JSON.stringify({ txHash }),
+      });
+
       toast.dismiss();
-      toast.success(`Tokens issued`, {
-        description: `${issueAmount} tokens to ${issueRecipient.substring(
+      toast.success("Tokens issued", {
+        description: `Issued ${issueAmount} tokens to ${issueRecipient.substring(
           0,
           12
-        )}... Request #${txHash.requestId} - Tx: ${txHash.txHash.substring(
-          0,
-          8
         )}...`,
       });
 
-      setLastIssuance({
-        requestId: txHash.requestId,
-        recipient: issueRecipient,
-        amount: issueAmount,
-        txHash: txHash.txHash,
-      });
-
-      // Reset form
       setIssueRecipient("");
       setIssueAmount("");
-
-      await loadData();
+      setSelectedIssuanceRequestId("");
+      await loadIssuanceRequests();
       await loadAssetContext();
       onUpdate?.();
     } catch (error: any) {
       toast.dismiss();
-      console.error("Issue asset failed:", error);
-
-      if (error.message?.includes("Unauthorized")) {
-        toast.error("Unauthorized", {
-          description: "Only the issuer can issue new tokens",
-        });
-      } else if (error.message?.includes("Not verified")) {
-        toast.error("Recipient not verified", {
-          description:
-            "Recipient must have verified identity to receive tokens",
-        });
-      } else {
-        toast.error("Issuance failed", {
-          description: error.message || "Unknown error occurred",
-        });
-      }
+      console.error("Issue approved tokens failed:", error);
+      toast.error("Issuance failed", {
+        description: error.message || "Unknown error occurred",
+      });
     } finally {
       setLoading(false);
     }
@@ -463,7 +580,51 @@ export function IssuanceRedemptionManager({
 
   const pendingRequests = requests.filter((r) => !r.approved);
   const approvedRequests = requests.filter((r) => r.approved);
+  const pendingIssuanceRequests = useMemo(
+    () => issuanceRequests.filter((req) => req.status === "PENDING"),
+    [issuanceRequests]
+  );
+  const approvedIssuanceRequests = useMemo(
+    () => issuanceRequests.filter((req) => req.status === "APPROVED"),
+    [issuanceRequests]
+  );
   const totalSupply = useMemo(() => tokenInfo?.total_supply || "0", [tokenInfo]);
+
+  const selectedApprovedRequest = useMemo(() => {
+    if (!approvedIssuanceRequests.length) return null;
+
+    if (selectedIssuanceRequestId) {
+      return (
+        approvedIssuanceRequests.find(
+          (req) => req.id === selectedIssuanceRequestId
+        ) || null
+      );
+    }
+
+    if (!issueRecipient) return null;
+    const normalizedRecipient = issueRecipient.toLowerCase();
+    return (
+      approvedIssuanceRequests.find(
+        (req) =>
+          req.assetId === issueAssetId &&
+          req.recipient.toLowerCase() === normalizedRecipient
+      ) || null
+    );
+  }, [
+    approvedIssuanceRequests,
+    selectedIssuanceRequestId,
+    issueRecipient,
+    issueAssetId,
+  ]);
+
+  const approvedAmount =
+    selectedApprovedRequest?.amount && selectedApprovedRequest.amount !== ""
+      ? selectedApprovedRequest.amount
+      : null;
+
+  const amountMatchesApproval =
+    approvedAmount && issueAmount ? approvedAmount === issueAmount : false;
+  const hasApprovedSelection = !!selectedApprovedRequest;
 
   return (
     <motion.div
@@ -879,14 +1040,113 @@ export function IssuanceRedemptionManager({
                   )}
                 </div>
 
+                {approvedIssuanceRequests.length > 0 && (
+                  <div className="rounded-xl border border-slate-200/70 bg-white px-4 py-3 text-sm space-y-3">
+                    <div className="font-semibold text-slate-700">
+                      Approved issuance requests
+                    </div>
+                    <Select
+                      value={selectedIssuanceRequestId}
+                      onValueChange={(value) => {
+                        setSelectedIssuanceRequestId(value);
+                        const selected = approvedIssuanceRequests.find(
+                          (request) => request.id === value
+                        );
+                        if (selected) {
+                          setIssueAssetId(selected.assetId);
+                          setIssueRecipient(selected.recipient);
+                          setIssueAmount(selected.amount);
+                        }
+                      }}
+                      disabled={loading || !isIssuer}
+                    >
+                      <SelectTrigger className="h-11">
+                        <SelectValue placeholder="Select approved request" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {approvedIssuanceRequests.map((request) => (
+                          <SelectItem key={request.id} value={request.id}>
+                            {request.assetId} • {request.amount} •{" "}
+                            {request.recipient.substring(0, 10)}...
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="text-xs text-slate-500">
+                      Select an approved request to auto-fill the recipient and
+                      amount.
+                    </div>
+                  </div>
+                )}
+
+                {isIssuer && approvedIssuanceRequests.length === 0 && (
+                  <Alert>
+                    <AlertDescription>
+                      No approved issuance requests yet. Submit a request below
+                      and wait for controller approval.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {isController && (
+                  <div className="rounded-xl border border-slate-200/70 bg-white px-4 py-3 text-sm space-y-3">
+                    <div className="font-semibold text-slate-700">
+                      Pending issuance approvals
+                    </div>
+                    {pendingIssuanceRequests.length === 0 ? (
+                      <div className="text-xs text-slate-500">
+                        No pending issuance approvals.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {pendingIssuanceRequests.map((request) => (
+                          <div
+                            key={request.id}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200/70 bg-slate-50 px-3 py-2 text-xs"
+                          >
+                            <div className="space-y-1">
+                              <div className="font-semibold text-slate-700">
+                                Asset {request.assetId} • {request.amount}
+                              </div>
+                              <div className="text-slate-500">
+                                {request.recipient.substring(0, 16)}...
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  handleApproveIssuance(request.id)
+                                }
+                                disabled={loading || issuanceLoading}
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  handleRejectIssuance(request.id)
+                                }
+                                disabled={loading || issuanceLoading}
+                              >
+                                Reject
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {lastIssuance && (
                   <Alert>
                     <AlertDescription>
                       Last issuance request: #{lastIssuance.requestId} for{" "}
                       {lastIssuance.amount} tokens to{" "}
                       {lastIssuance.recipient.substring(0, 12)}... (pending
-                      controller approval). Tx:{" "}
-                      {lastIssuance.txHash.substring(0, 8)}...
+                      controller approval).
                     </AlertDescription>
                   </Alert>
                 )}
@@ -933,7 +1193,7 @@ export function IssuanceRedemptionManager({
                     value={issueRecipient}
                     onChange={(e) => setIssueRecipient(e.target.value)}
                     placeholder="zig1..."
-                    disabled={loading || !isIssuer}
+                    disabled={loading || !isIssuer || hasApprovedSelection}
                     className="bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
                   />
                 </div>
@@ -946,15 +1206,31 @@ export function IssuanceRedemptionManager({
                     value={issueAmount}
                     onChange={(e) => setIssueAmount(e.target.value)}
                     placeholder="1000000"
-                    disabled={loading || !isIssuer}
+                    disabled={loading || !isIssuer || hasApprovedSelection}
                     className="bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
                   />
+                  {approvedAmount && (
+                    <div className="text-xs text-slate-500">
+                      Approved amount: {approvedAmount}
+                    </div>
+                  )}
+                  {selectedApprovedRequest && issueAmount && !amountMatchesApproval && (
+                    <Alert variant="destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        You are only allowed to issue {approvedAmount} tokens.
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 </div>
 
                 <Button
                   onClick={handleIssueAsset}
                   disabled={
-                    loading || !isIssuer || !issueRecipient || !issueAmount
+                    loading ||
+                    !isIssuer ||
+                    !issueRecipient ||
+                    !issueAmount
                   }
                   className="w-full bg-linear-to-tr from-[#172E7F] to-[#2A5FA6] hover:opacity-90 transition-opacity"
                 >
@@ -966,7 +1242,32 @@ export function IssuanceRedemptionManager({
                   ) : (
                     <>
                       <ArrowUpCircle className="mr-2 h-4 w-4" />
-                      Request Issuance
+                      Request Approval
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  onClick={handleMintApproved}
+                  disabled={
+                    loading ||
+                    !isIssuer ||
+                    !selectedApprovedRequest ||
+                    !issueRecipient ||
+                    !issueAmount ||
+                    !amountMatchesApproval
+                  }
+                  className="w-full bg-linear-to-tr from-[#172E7F] to-[#2A5FA6] hover:opacity-90 transition-opacity"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Issuing...
+                    </>
+                  ) : (
+                    <>
+                      <ArrowUpCircle className="mr-2 h-4 w-4" />
+                      Issue Tokens
                     </>
                   )}
                 </Button>

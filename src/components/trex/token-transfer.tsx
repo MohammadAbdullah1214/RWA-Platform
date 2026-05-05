@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useWallet } from "@/hooks/use-wallet";
-import { parseTokenAmount, formatTokenAmount } from "@/hooks/use-assets";
+import { parseTokenAmount, formatTokenAmount } from "@/lib/token-utils";
 import { toast } from "sonner";
 
 interface TokenTransferProps {
@@ -102,6 +102,83 @@ export function TokenTransfer({
     setComplianceStatus(null);
 
     try {
+      const requiredTopics =
+        (await trexClient.getRequiredTopics().catch(() => null))?.topics || [];
+      const hasRequiredClaims = (
+        identity: any,
+        topics: number[]
+      ): boolean => {
+        if (!topics.length) return true;
+        if (!identity?.claims || identity.claims.length === 0) return false;
+        return topics.every((topic: number) =>
+          identity.claims.some((claim: any) => claim.topic === topic)
+        );
+      };
+
+      const senderIdentity =
+        userIdentity || (await trexClient.getUserIdentity(address));
+      if (!senderIdentity?.onchainIdAddress) {
+        setComplianceStatus({
+          checked: true,
+          allowed: false,
+          reason: "Sender does not have an OnChainID registered.",
+        });
+        toast.error("Sender identity not registered");
+        return;
+      }
+
+      if (!senderIdentity?.isVerified) {
+        setComplianceStatus({
+          checked: true,
+          allowed: false,
+          reason: senderIdentity?.verificationReason || "Sender is not verified.",
+        });
+        toast.error("Sender identity not verified");
+        return;
+      }
+
+      if (!hasRequiredClaims(senderIdentity, requiredTopics)) {
+        setComplianceStatus({
+          checked: true,
+          allowed: false,
+          reason: "Sender is missing required compliance claims.",
+        });
+        toast.error("Sender missing required claims");
+        return;
+      }
+
+      const recipientIdentity = await trexClient.getUserIdentity(recipient);
+      if (!recipientIdentity?.onchainIdAddress) {
+        setComplianceStatus({
+          checked: true,
+          allowed: false,
+          reason: "Recipient does not have an OnChainID registered.",
+        });
+        toast.error("Recipient identity not registered");
+        return;
+      }
+
+      if (!recipientIdentity?.isVerified) {
+        setComplianceStatus({
+          checked: true,
+          allowed: false,
+          reason:
+            recipientIdentity?.verificationReason || "Recipient is not verified.",
+        });
+        toast.error("Recipient identity not verified");
+        return;
+      }
+
+      if (!hasRequiredClaims(recipientIdentity, requiredTopics)) {
+        setComplianceStatus({
+          checked: true,
+          allowed: false,
+          reason: "Recipient is missing required compliance claims.",
+        });
+        toast.error("Recipient missing required claims");
+        return;
+      }
+
       const microAmount = parseTokenAmount(amount, tokenDecimals);
       const result = await trexClient.canTransfer(
         address,

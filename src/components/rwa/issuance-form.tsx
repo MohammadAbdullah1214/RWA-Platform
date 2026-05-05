@@ -47,7 +47,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useAssets } from "@/hooks/use-asets";
+import { useAssetsContext } from "@/contexts/assets-context";
 import { useWallet } from "@/hooks/use-wallet";
 import { useIdentity } from "@/hooks/use-identity";
 import { toast } from "sonner";
@@ -121,12 +121,12 @@ export function IssuanceForm() {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
-  const { issueAsset } = useAssets({ trexClient, walletAddress: address });
+  const { issueAsset } = useAssetsContext();
   const {
     isVerified,
     hasOnchainId,
     loading: identityLoading,
-  } = useIdentity({ trexClient, walletAddress: address });
+  } = useIdentity();
   const [factoryAdmin, setFactoryAdmin] = useState<string | null>(null);
   const [factoryLoading, setFactoryLoading] = useState(false);
 
@@ -172,21 +172,21 @@ export function IssuanceForm() {
     if (address) {
       form.setValue(
         "assetDetails.legalOwner",
-        form.getValues("assetDetails.legalOwner") || address
+        form.getValues("assetDetails.legalOwner") || address,
       );
 
       // Set defaults from the connected wallet
       form.setValue(
         "tokenDetails.owner",
-        form.getValues("tokenDetails.owner") || address
+        form.getValues("tokenDetails.owner") || address,
       );
       form.setValue(
         "tokenDetails.issuer",
-        form.getValues("tokenDetails.issuer") || address
+        form.getValues("tokenDetails.issuer") || address,
       ); // Issuer is creator
       form.setValue(
         "tokenDetails.controller",
-        form.getValues("tokenDetails.controller") || address
+        form.getValues("tokenDetails.controller") || address,
       );
     }
   }, [address, form]);
@@ -233,7 +233,7 @@ export function IssuanceForm() {
 
     if (validFiles.length !== files.length) {
       toast.warning(
-        "Some files were rejected (max 10MB, PDF/DOC/JPEG/PNG only)"
+        "Some files were rejected (max 10MB, PDF/DOC/JPEG/PNG only)",
       );
     }
   };
@@ -410,82 +410,114 @@ export function IssuanceForm() {
       className="max-w-4xl mx-auto"
     >
       {/* Factory Admin Notice */}
-      <Card className="mb-6 border-primary/40">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-primary" />
+      <Card className="mb-6 bg-gradient-to-br from-slate-50 to-white border-2 border-slate-200 rounded-2xl shadow-[0_4px_16px_rgba(23,46,127,0.06)]">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-slate-900">
+            <div className="p-2 rounded-xl bg-gradient-to-br from-[#172E7F]/10 to-[#2A5FA6]/10 border border-[#172E7F]/20">
+              <Shield className="h-5 w-5 text-[#172E7F]" />
+            </div>
             Factory Admin Required
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm text-muted-foreground">
-          <p>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-slate-600 leading-relaxed">
             Token creation is restricted to the factory admin wallet. Connect
             with the platform owner to issue a new fund token, then set legal
             owner and issuer fields to the fund wallet.
           </p>
-          <p className="font-mono text-xs">Factory: {TREX_CONTRACTS.factory}</p>
-          {factoryAdmin && (
-            <p className="font-mono text-xs">Admin: {factoryAdmin}</p>
-          )}
-          {address && !factoryLoading && (
-            <p className={isFactoryAdmin ? "text-green-600" : "text-red-600"}>
-              {isFactoryAdmin
-                ? "You are connected as factory admin."
-                : "You are NOT the factory admin."}
+          <div className="space-y-1.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <p className="font-mono text-xs text-slate-600">
+              <span className="font-semibold text-slate-700">Factory:</span>{" "}
+              {TREX_CONTRACTS.factory}
             </p>
+            {factoryAdmin && (
+              <p className="font-mono text-xs text-slate-600">
+                <span className="font-semibold text-slate-700">Admin:</span>{" "}
+                {factoryAdmin}
+              </p>
+            )}
+          </div>
+          {address && !factoryLoading && (
+            <div
+              className={`p-3 rounded-xl border-2 ${
+                isFactoryAdmin
+                  ? "bg-emerald-50 border-emerald-200"
+                  : "bg-red-50 border-red-200"
+              }`}
+            >
+              <p
+                className={`text-sm font-semibold ${
+                  isFactoryAdmin ? "text-emerald-700" : "text-red-700"
+                }`}
+              >
+                {isFactoryAdmin
+                  ? "✓ You are connected as factory admin."
+                  : "✗ You are NOT the factory admin."}
+              </p>
+            </div>
           )}
         </CardContent>
       </Card>
       {/* Step Indicator */}
       <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-6">
           {[1, 2, 3, 4].map((step) => (
-            <div key={step} className="flex items-center">
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  step <= currentStep
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {step}
+            <div key={step} className="flex items-center flex-1">
+              <div className="flex flex-col items-center flex-1">
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-300 ${
+                    step <= currentStep
+                      ? "bg-gradient-to-br from-[#172E7F] to-[#2A5FA6] text-white shadow-[0_4px_12px_rgba(23,46,127,0.25)]"
+                      : "bg-slate-100 text-slate-400 border-2 border-slate-200"
+                  }`}
+                >
+                  {step < currentStep ? (
+                    <CheckCircle className="h-5 w-5" />
+                  ) : (
+                    step
+                  )}
+                </div>
               </div>
               {step < 4 && (
-                <div
-                  className={`w-16 h-1 ${
-                    step < currentStep ? "bg-primary" : "bg-muted"
-                  }`}
-                />
+                <div className="flex-1 h-1 mx-2">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      step < currentStep
+                        ? "bg-gradient-to-r from-[#172E7F] to-[#2A5FA6]"
+                        : "bg-slate-200"
+                    }`}
+                  />
+                </div>
               )}
             </div>
           ))}
         </div>
-        <div className="flex justify-between text-sm">
+        <div className="grid grid-cols-4 gap-2 text-center">
           <span
-            className={
-              currentStep >= 1 ? "font-medium" : "text-muted-foreground"
-            }
+            className={`text-sm font-semibold transition-colors ${
+              currentStep >= 1 ? "text-slate-900" : "text-slate-400"
+            }`}
           >
             Asset Details
           </span>
           <span
-            className={
-              currentStep >= 2 ? "font-medium" : "text-muted-foreground"
-            }
+            className={`text-sm font-semibold transition-colors ${
+              currentStep >= 2 ? "text-slate-900" : "text-slate-400"
+            }`}
           >
             Valuation
           </span>
           <span
-            className={
-              currentStep >= 3 ? "font-medium" : "text-muted-foreground"
-            }
+            className={`text-sm font-semibold transition-colors ${
+              currentStep >= 3 ? "text-slate-900" : "text-slate-400"
+            }`}
           >
             Compliance
           </span>
           <span
-            className={
-              currentStep >= 4 ? "font-medium" : "text-muted-foreground"
-            }
+            className={`text-sm font-semibold transition-colors ${
+              currentStep >= 4 ? "text-slate-900" : "text-slate-400"
+            }`}
           >
             Tokenization
           </span>
@@ -811,13 +843,13 @@ export function IssuanceForm() {
                                 <FormControl>
                                   <Checkbox
                                     checked={field.value?.includes(
-                                      option.value
+                                      option.value,
                                     )}
                                     onCheckedChange={(checked) => {
                                       const updatedValue = checked
                                         ? [...(field.value || []), option.value]
                                         : field.value?.filter(
-                                            (v: string) => v !== option.value
+                                            (v: string) => v !== option.value,
                                           );
                                       field.onChange(updatedValue);
                                     }}

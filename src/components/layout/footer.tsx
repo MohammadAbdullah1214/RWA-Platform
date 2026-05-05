@@ -35,7 +35,7 @@ export function Footer() {
               <FooterLink href="/issuance">Asset Issuance</FooterLink>
               <FooterLink href="/compliance">Compliance</FooterLink>
               <FooterLink href="/assets">Browse Assets</FooterLink>
-              <FooterLink href="/manage">Token Management</FooterLink>
+              <FooterLink href="/transfer">Token Management</FooterLink>
             </ul>
           </div>
 

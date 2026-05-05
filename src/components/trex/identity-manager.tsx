@@ -37,6 +37,7 @@ import { Separator } from "@/components/ui/seperator";
 import { useWallet } from "@/hooks/use-wallet";
 import { usePermissions } from "@/hooks/use-permissions";
 import { UserIdentity, CLAIM_TOPIC_NAMES } from "@/types/trex-contracts";
+import { TREX_CONTRACTS, getZigChainConfig } from "@/lib/zigchain-config";
 import { toast } from "sonner";
 
 interface IdentityManagerProps {
@@ -57,6 +58,8 @@ export function IdentityManager({
   const [isRegistering, setIsRegistering] = useState(false);
   const [country, setCountry] = useState("");
   const [issuerTopics, setIssuerTopics] = useState<number[] | null>(null);
+  const [lcdOnchainId, setLcdOnchainId] = useState<string | null>(null);
+  const [isLoadingLcdId, setIsLoadingLcdId] = useState(false);
   const canCreateOnchainId = !!issuerTopics?.includes(1);
   const canRegisterIdentity = !!permissions.isIdentityRegistryOwner;
 
@@ -74,6 +77,69 @@ export function IdentityManager({
     };
     checkIssuerStatus();
   }, [trexClient, address]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadIdentityFromLcd = async () => {
+      if (!address || userIdentity?.onchainIdAddress) {
+        if (isActive) {
+          setLcdOnchainId(null);
+        }
+        return;
+      }
+
+      const config = getZigChainConfig();
+      if (!config.restEndpoint) {
+        return;
+      }
+
+      setIsLoadingLcdId(true);
+
+      try {
+        const query = {
+          identity: {
+            wallet: address,
+          },
+        };
+        const queryJson = JSON.stringify(query);
+        const base64Query =
+          typeof window !== "undefined"
+            ? window.btoa(queryJson)
+            : Buffer.from(queryJson).toString("base64");
+        const endpoint = config.restEndpoint.replace(/\/$/, "");
+        const url = `${endpoint}/cosmwasm/wasm/v1/contract/${TREX_CONTRACTS.identityRegistry}/smart/${base64Query}`;
+        const response = await fetch(url);
+        const json = await response.json();
+        const identityAddr =
+          json?.data?.identity_addr ||
+          json?.identity_addr ||
+          json?.data?.identityAddress ||
+          null;
+
+        if (isActive) {
+          setLcdOnchainId(identityAddr);
+        }
+      } catch (error) {
+        console.error("Failed to load identity from LCD:", error);
+        if (isActive) {
+          setLcdOnchainId(null);
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingLcdId(false);
+        }
+      }
+    };
+
+    loadIdentityFromLcd();
+
+    return () => {
+      isActive = false;
+    };
+  }, [address, userIdentity?.onchainIdAddress]);
+
+  const onchainIdToDisplay = userIdentity?.onchainIdAddress || lcdOnchainId;
 
   /**
    * Create OnChainID for the user
@@ -230,17 +296,17 @@ export function IdentityManager({
             <Label className="text-xs text-muted-foreground">
               OnChainID Contract
             </Label>
-            {userIdentity?.onchainIdAddress ? (
+            {onchainIdToDisplay ? (
               <div className="flex items-center gap-2 mt-1">
                 <p className="font-mono text-sm flex-1">
-                  {userIdentity.onchainIdAddress}
+                  {onchainIdToDisplay}
                 </p>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() =>
                     window.open(
-                      `https://testnet.ping.pub/zigchain/account/${userIdentity.onchainIdAddress}`,
+                      `https://testnet.ping.pub/zigchain/account/${onchainIdToDisplay}`,
                       "_blank"
                     )
                   }
@@ -251,16 +317,20 @@ export function IdentityManager({
                   variant="outline"
                   className="text-green-600 border-green-600"
                 >
-                  ✓ Active
+                  Active
                 </Badge>
               </div>
             ) : (
               <div className="flex items-center gap-2 mt-1">
                 <p className="text-sm text-muted-foreground flex-1">
-                  No OnChainID found
+                  {isLoadingLcdId ? "Loading from registry..." : "No OnChainID found"}
                 </p>
                 {canCreateOnchainId && (
-                  <Button size="sm" onClick={handleCreateOnChainId} disabled={isCreatingId}>
+                  <Button
+                    size="sm"
+                    onClick={handleCreateOnChainId}
+                    disabled={isCreatingId}
+                  >
                     {isCreatingId ? (
                       <>
                         <Loader2 className="mr-2 h-3 w-3 animate-spin" />

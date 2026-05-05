@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useWallet } from "@/hooks/use-wallet";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,9 +35,9 @@ import {
   Users,
 } from "lucide-react";
 import {
-  getApprovedApplications,
+  listKycApplications,
   type KycApplication,
-} from "@/lib/kyc-storage";
+} from "@/lib/kyc-api";
 import { InvestorClaimsManager } from "@/components/trex/investor-claims-manager";
 import { RequiredTopicsManager } from "@/components/trex/required-topics-manager";
 import { toast } from "sonner";
@@ -58,38 +58,61 @@ export default function AdminIdentitiesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("approvals");
+  const loadRunId = useRef(0);
+
+  const runWithConcurrency = async <T,>(
+    items: T[],
+    limit: number,
+    worker: (item: T) => Promise<void>
+  ) => {
+    let index = 0;
+    const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (index < items.length) {
+        const current = items[index];
+        index += 1;
+        await worker(current);
+      }
+    });
+    await Promise.all(runners);
+  };
 
   // Load approved applications that need whitelisting
   const loadApprovedApplications = async () => {
+    const runId = ++loadRunId.current;
     setLoading(true);
     setError(null);
 
     try {
-      // Get approved applications from localStorage
-      const apps = getApprovedApplications();
-      setApprovedApplications(apps);
+      // Get approved applications from backend
+      const apps = await listKycApplications({ status: "APPROVED", limit: 200 });
+      const filtered = apps.filter((app) => !!app.onchainIdAddress);
+      setApprovedApplications(filtered);
 
       // Check which are already whitelisted on-chain
-      if (trexClient) {
+      if (trexClient && apps.length > 0) {
         const whitelisted = new Set<string>();
-        for (const app of apps) {
+        await runWithConcurrency(apps, 5, async (app) => {
           try {
-            const identity = await trexClient.getIdentity(app.wallet);
+            const identity = await trexClient.getIdentity(app.walletAddress);
             if (identity.identity_addr) {
-              whitelisted.add(app.wallet.toLowerCase());
+              whitelisted.add(app.walletAddress.toLowerCase());
             }
-          } catch (err) {
+          } catch {
             // Not whitelisted yet
           }
+        });
+        if (runId === loadRunId.current) {
+          setWhitelistedWallets(whitelisted);
         }
-        setWhitelistedWallets(whitelisted);
       }
     } catch (err: any) {
       console.error("Failed to load applications:", err);
       setError(err.message);
       toast.error("Failed to load applications");
     } finally {
-      setLoading(false);
+      if (runId === loadRunId.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -103,7 +126,7 @@ export default function AdminIdentitiesPage() {
 
     try {
       const txHash = await trexClient.registerIdentity(
-        app.wallet,
+        app.walletAddress,
         app.onchainIdAddress,
         app.country
       );
@@ -114,7 +137,7 @@ export default function AdminIdentitiesPage() {
 
       // Update local state
       setWhitelistedWallets((prev) =>
-        new Set(prev).add(app.wallet.toLowerCase())
+        new Set(prev).add(app.walletAddress.toLowerCase())
       );
 
       // Reload list
@@ -184,7 +207,7 @@ export default function AdminIdentitiesPage() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-gradient-to-tr from-[#172E7F] to-[#2A5FA6]">
+            <div className="p-2 rounded-lg bg-linear-to-tr from-[#172E7F] to-[#2A5FA6]">
               <Shield className="h-6 w-6 text-white" />
             </div>
             <div>
@@ -294,7 +317,7 @@ export default function AdminIdentitiesPage() {
           {canWhitelist && (
             <TabsTrigger
               value="approvals"
-              className="gap-2 rounded-lg data-[state=active]:bg-gradient-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
+              className="gap-2 rounded-lg data-[state=active]:bg-linear-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
             >
               <UserCheck className="h-4 w-4" />
               <span>Whitelist Approvals</span>
@@ -308,7 +331,7 @@ export default function AdminIdentitiesPage() {
           {canManageTopics && (
             <TabsTrigger
               value="settings"
-              className="gap-2 rounded-lg data-[state=active]:bg-gradient-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
+              className="gap-2 rounded-lg data-[state=active]:bg-linear-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
             >
               <Settings className="h-4 w-4" />
               <span>Compliance Settings</span>
@@ -317,7 +340,7 @@ export default function AdminIdentitiesPage() {
           {canManageClaims && (
             <TabsTrigger
               value="claims"
-              className="gap-2 rounded-lg data-[state=active]:bg-gradient-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
+              className="gap-2 rounded-lg data-[state=active]:bg-linear-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
             >
               <FileText className="h-4 w-4" />
               <span>Manage Claims</span>
@@ -335,7 +358,7 @@ export default function AdminIdentitiesPage() {
             <AlertDescription className="">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
                 <div className="flex gap-2">
-                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">
+                  <div className="shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">
                     1
                   </div>
                   <div className="text-xs">
@@ -344,7 +367,7 @@ export default function AdminIdentitiesPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">
+                  <div className="shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">
                     2
                   </div>
                   <div className="text-xs">
@@ -353,7 +376,7 @@ export default function AdminIdentitiesPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-green-600 text-white text-xs font-bold flex items-center justify-center">
+                  <div className="shrink-0 w-6 h-6 rounded-full bg-green-600 text-white text-xs font-bold flex items-center justify-center">
                     3
                   </div>
                   <div className="text-xs">
@@ -364,7 +387,7 @@ export default function AdminIdentitiesPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-green-600 text-white text-xs font-bold flex items-center justify-center">
+                  <div className="shrink-0 w-6 h-6 rounded-full bg-green-600 text-white text-xs font-bold flex items-center justify-center">
                     4
                   </div>
                   <div className="text-xs">
@@ -445,7 +468,7 @@ export default function AdminIdentitiesPage() {
                     <TableBody>
                       {approvedApplications.map((app) => {
                         const isWhitelisted = whitelistedWallets.has(
-                          app.wallet.toLowerCase()
+                          app.walletAddress.toLowerCase()
                         );
                         return (
                           <TableRow key={app.id} className="hover:bg-muted/30">
@@ -459,7 +482,7 @@ export default function AdminIdentitiesPage() {
                             </TableCell>
                             <TableCell>
                               <code className="text-xs bg-muted px-2 py-1 rounded">
-                                {app.wallet.slice(0, 16)}...
+                                {app.walletAddress.slice(0, 16)}...
                               </code>
                             </TableCell>
                             <TableCell>

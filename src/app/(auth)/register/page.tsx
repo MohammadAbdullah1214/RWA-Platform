@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { apiFetch, storeTokens } from '@/lib/backend';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -22,9 +23,10 @@ export default function RegisterPage() {
     firstName: '',
     lastName: '',
     email: '',
+    walletAddress: '',
     password: '',
     confirmPassword: '',
-    userType: 'investor' as 'investor' | 'issuer' | 'custodian',
+    userType: 'investor' as 'investor' | 'issuer',
     acceptTerms: false,
     receiveUpdates: false,
   });
@@ -45,8 +47,20 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const tokens = await apiFetch<{ accessToken: string; refreshToken: string }>(
+        "/auth/register",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            email: formData.email,
+            password: formData.password,
+            walletAddress: formData.walletAddress || undefined,
+            requestedRole: formData.userType,
+          }),
+        }
+      );
+
+      storeTokens(tokens);
       
       toast.success('Registration successful! Please check your email to verify your account.');
       router.push('/dashboard');
@@ -60,21 +74,20 @@ export default function RegisterPage() {
   const userTypes = [
     { value: 'investor', label: 'Investor', description: 'Buy and trade tokenized assets' },
     { value: 'issuer', label: 'Asset Issuer', description: 'Tokenize and manage real-world assets' },
-    { value: 'custodian', label: 'Custodian', description: 'Hold and safeguard assets' },
   ];
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/10 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-[radial-gradient(circle_at_top,_#e8eefc,_transparent_55%),linear-gradient(135deg,_#f6f7fb,_#eef2ff)] p-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
         className="w-full max-w-2xl"
       >
-        <Card className="border-0 shadow-2xl">
+        <Card className="border border-slate-200/70 shadow-2xl rounded-3xl bg-white/80 backdrop-blur">
           <CardHeader className="space-y-1">
             <div className="flex justify-center mb-4">
-              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center">
+              <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-[#172E7F] to-[#2A5FA6] flex items-center justify-center shadow-lg">
                 <User className="h-6 w-6 text-white" />
               </div>
             </div>
@@ -96,7 +109,7 @@ export default function RegisterPage() {
                     <Input
                       id="firstName"
                       placeholder="John"
-                      className="pl-10"
+                      className="pl-10 bg-white/90 border-slate-200/70 focus:bg-white"
                       value={formData.firstName}
                       onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                       required
@@ -111,7 +124,7 @@ export default function RegisterPage() {
                     <Input
                       id="lastName"
                       placeholder="Doe"
-                      className="pl-10"
+                      className="pl-10 bg-white/90 border-slate-200/70 focus:bg-white"
                       value={formData.lastName}
                       onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                       required
@@ -128,10 +141,23 @@ export default function RegisterPage() {
                     id="email"
                     type="email"
                     placeholder="name@example.com"
-                    className="pl-10"
+                    className="pl-10 bg-white/90 border-slate-200/70 focus:bg-white"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="walletAddress">Wallet Address (optional)</Label>
+                <div className="relative">
+                  <Input
+                    id="walletAddress"
+                    placeholder="zig1..."
+                    className="bg-white/90 border-slate-200/70 focus:bg-white"
+                    value={formData.walletAddress}
+                    onChange={(e) => setFormData({ ...formData, walletAddress: e.target.value })}
                   />
                 </div>
               </div>
@@ -144,8 +170,8 @@ export default function RegisterPage() {
                     <Input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
-                      placeholder="••••••••"
-                      className="pl-10 pr-10"
+                      placeholder="Password"
+                      className="pl-10 pr-10 bg-white/90 border-slate-200/70 focus:bg-white"
                       value={formData.password}
                       onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                       required
@@ -167,8 +193,8 @@ export default function RegisterPage() {
                     <Input
                       id="confirmPassword"
                       type={showConfirmPassword ? 'text' : 'password'}
-                      placeholder="••••••••"
-                      className="pl-10 pr-10"
+                      placeholder="Confirm password"
+                      className="pl-10 pr-10 bg-white/90 border-slate-200/70 focus:bg-white"
                       value={formData.confirmPassword}
                       onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                       required
@@ -188,7 +214,7 @@ export default function RegisterPage() {
                 <Label htmlFor="userType">I want to register as</Label>
                 <Select
                   value={formData.userType}
-                  onValueChange={(value: 'investor' | 'issuer' | 'custodian') => 
+                  onValueChange={(value: 'investor' | 'issuer') => 
                     setFormData({ ...formData, userType: value })
                   }
                 >
@@ -246,7 +272,7 @@ export default function RegisterPage() {
 
               <Button
                 type="submit"
-                className="w-full"
+                className="w-full bg-gradient-to-r from-[#172E7F] to-[#2A5FA6] hover:opacity-90"
                 disabled={isLoading}
               >
                 {isLoading ? 'Creating account...' : 'Create Account'}

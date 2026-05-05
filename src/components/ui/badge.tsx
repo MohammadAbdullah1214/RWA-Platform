@@ -9,17 +9,17 @@ function Badge({ className, variant = "default", ...props }: BadgeProps) {
   return (
     <div
       className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide transition-colors focus:outline-none focus:ring-2 focus:ring-ring/40 focus:ring-offset-2",
+        "inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-bold tracking-wide transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-ring/50 focus:ring-offset-2",
         {
-          "border-transparent bg-primary text-primary-foreground shadow-sm":
+          "border-transparent bg-gradient-to-br from-[#172E7F] to-[#2A5FA6] text-white shadow-[0_2px_8px_rgba(23,46,127,0.25)]":
             variant === "default",
-          "border-transparent bg-secondary text-secondary-foreground":
+          "border-transparent bg-gradient-to-br from-slate-100 to-slate-200 text-slate-700 shadow-[0_2px_6px_rgba(15,23,42,0.08)]":
             variant === "secondary",
-          "border-transparent bg-destructive text-destructive-foreground":
+          "border-transparent bg-gradient-to-br from-red-500 to-red-600 text-white shadow-[0_2px_8px_rgba(220,38,38,0.25)]":
             variant === "destructive",
-          "border-transparent bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25":
+          "border-transparent bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 text-emerald-700 border-emerald-200 shadow-[0_2px_6px_rgba(16,185,129,0.15)]":
             variant === "success",
-          "border-slate-200/70 bg-white/80 text-slate-700 hover:bg-slate-50 hover:text-slate-900":
+          "border-2 border-slate-200 bg-white/90 text-slate-700 shadow-[0_2px_6px_rgba(15,23,42,0.06)] hover:bg-slate-50 hover:border-slate-300":
             variant === "outline",
         },
         className

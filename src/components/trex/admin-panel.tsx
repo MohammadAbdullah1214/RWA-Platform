@@ -31,7 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useWallet } from "@/hooks/use-wallet";
-import { parseTokenAmount } from "@/hooks/use-assets";
+import { parseTokenAmount } from "@/lib/token-utils";
 import { toast } from "sonner";
 import type { PermissionsState } from "@/hooks/use-permissions";
 
@@ -166,7 +166,7 @@ export function AdminPanel({
                 <TabsTrigger
                   value="mint"
                   disabled={!tokenContract}
-                  className="rounded-xl px-4 py-2 data-[state=active]:bg-gradient-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all text-sm"
+                  className="rounded-xl px-4 py-2 data-[state=active]:bg-linear-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all text-sm"
                 >
                   Mint
                 </TabsTrigger>
@@ -175,7 +175,7 @@ export function AdminPanel({
                 <TabsTrigger
                   value="freeze"
                   disabled={!tokenContract}
-                  className="rounded-xl px-4 py-2 data-[state=active]:bg-gradient-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all text-sm"
+                  className="rounded-xl px-4 py-2 data-[state=active]:bg-linear-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all text-sm"
                 >
                   Freeze
                 </TabsTrigger>
@@ -184,7 +184,7 @@ export function AdminPanel({
                 <TabsTrigger
                   value="pause"
                   disabled={!tokenContract}
-                  className="rounded-xl px-4 py-2 data-[state=active]:bg-gradient-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all text-sm"
+                  className="rounded-xl px-4 py-2 data-[state=active]:bg-linear-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all text-sm"
                 >
                   Pause
                 </TabsTrigger>
@@ -193,7 +193,7 @@ export function AdminPanel({
                 <TabsTrigger
                   value="agents"
                   disabled={!tokenContract}
-                  className="rounded-xl px-4 py-2 data-[state=active]:bg-gradient-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all text-sm"
+                  className="rounded-xl px-4 py-2 data-[state=active]:bg-linear-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all text-sm"
                 >
                   Agents
                 </TabsTrigger>
@@ -202,7 +202,7 @@ export function AdminPanel({
                 <TabsTrigger
                   value="issuers"
                   disabled={!tokenContract}
-                  className="rounded-xl px-4 py-2 data-[state=active]:bg-gradient-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all text-sm"
+                  className="rounded-xl px-4 py-2 data-[state=active]:bg-linear-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all text-sm"
                 >
                   Issuers
                 </TabsTrigger>
@@ -297,11 +297,7 @@ function MintTokensTab({
 
     try {
       const microAmount = parseTokenAmount(amount, tokenDecimals);
-      const txHash = await trexClient.mint(
-        recipient,
-        microAmount,
-        tokenContract
-      );
+      await trexClient.mint(recipient, microAmount, tokenContract);
 
       toast.success(
         <div>
@@ -325,37 +321,6 @@ function MintTokensTab({
 
   return (
     <div className="space-y-4">
-      {/* Warning Banner */}
-      {/* Warning Banner */}
-      {/* <Alert
-        variant="default"
-        className="border-blue-100 bg-blue-50/50 rounded-xl"
-      >
-        <AlertCircle className="h-5 w-5 text-blue-600" />
-        <div className="ml-2">
-          <AlertTitle className="text-blue-900 font-semibold mb-1">
-            Generic Token Minting
-          </AlertTitle>
-          <AlertDescription className="text-blue-800 text-sm leading-relaxed">
-            <p className="mb-2">
-              This mints generic RWASEC tokens{" "}
-              <strong className="font-semibold text-blue-900">
-                NOT tied to any specific asset
-              </strong>
-              .
-            </p>
-            <p className="text-xs bg-white/50 p-2 rounded-lg border border-blue-100">
-              To issue tokens FOR a specific asset (which updates the asset's
-              tokenization stats), go to{" "}
-              <strong className="font-medium">
-                Assets → [Select Asset] → Issue More Tokens
-              </strong>
-              .
-            </p>
-          </AlertDescription>
-        </div>
-      </Alert> */}
-
       <div className="space-y-2">
         <Label htmlFor="mint-recipient">Recipient Address</Label>
         <Input
@@ -712,7 +677,7 @@ function PauseTokenTab({
           )}
         </Button>
         <Button
-          className="flex-1 bg-gradient-to-tr from-[#172E7F] to-[#2A5FA6] hover:opacity-90 transition-opacity"
+          className="flex-1 bg-linear-to-tr from-[#172E7F] to-[#2A5FA6] hover:opacity-90 transition-opacity"
           onClick={handleUnpause}
           disabled={isPausing || isUnpausing || !isPaused}
         >
@@ -892,7 +857,7 @@ function ManageAgentsTab({
 
       <div className="flex gap-2">
         <Button
-          className="flex-1 bg-gradient-to-tr from-[#172E7F] to-[#2A5FA6] hover:opacity-90 transition-opacity"
+          className="flex-1 bg-linear-to-tr from-[#172E7F] to-[#2A5FA6] hover:opacity-90 transition-opacity"
           onClick={handleAddAgent}
           disabled={isAdding || isRemoving || !agentAddress}
         >
@@ -1053,7 +1018,7 @@ function ManageIssuersTab({
       </div>
 
       <Button
-        className="w-full bg-gradient-to-tr from-[#172E7F] to-[#2A5FA6] hover:opacity-90 transition-opacity"
+        className="w-full bg-linear-to-tr from-[#172E7F] to-[#2A5FA6] hover:opacity-90 transition-opacity"
         onClick={handleAddIssuer}
         disabled={isAdding || !issuerAddress || selectedTopics.length === 0}
       >

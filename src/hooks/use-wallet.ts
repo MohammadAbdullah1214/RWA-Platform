@@ -1,19 +1,22 @@
 'use client';
 
 import { useCallback, useEffect } from 'react';
+import { useChain } from '@cosmos-kit/react';
+import { WalletStatus } from '@cosmos-kit/core';
 import { TrexClient } from '@/lib/trex-client';
-import { getZigChainConfig } from '@/lib/zigchain-config';
 import { toast } from 'sonner';
 import { useAppContext } from '@/contexts/app-context';
+import { COSMOS_KIT_CHAIN_NAME } from '@/lib/cosmos-kit-config';
+import { TREX_CONTRACTS } from '@/lib/zigchain-config';
+import { queryCache } from '@/lib/query-cache';
+import type { ComplianceConfigResponse } from '@/types/trex-contracts';
 
-// Extend Window interface for Keplr
-declare global {
-  interface Window {
-    keplr?: any;
-    leap?: any;
-    getOfflineSigner?: any;
-  }
-}
+let sharedHydrationKey = '';
+let sharedHydrationPromise: Promise<{
+  address: string;
+  client: TrexClient;
+  balance: string;
+} | null> | null = null;
 
 export function useWallet() {
   const {
@@ -26,177 +29,50 @@ export function useWallet() {
     setIsConnecting,
     clearWalletState,
   } = useAppContext();
+  const {
+    address: chainAddress,
+    connect,
+    disconnect: disconnectWallet,
+    getOfflineSigner,
+    status,
+  } = useChain(COSMOS_KIT_CHAIN_NAME);
 
   /**
    * Connect to Keplr wallet
    */
   const connectKeplr = useCallback(async () => {
-    if (!window.keplr) {
-      toast.error('Keplr wallet not found. Please install Keplr extension.');
-      window.open('https://www.keplr.app/', '_blank');
-      return;
-    }
-
     try {
       setIsConnecting(true);
-      const config = getZigChainConfig();
-
-      // Suggest chain to Keplr (in case it's not added)
-      try {
-        await window.keplr.experimentalSuggestChain({
-          chainId: config.chainId,
-          chainName: config.chainId.includes('test') ? 'ZigChain Testnet' : 'ZigChain',
-          rpc: config.rpcEndpoint,
-          rest: config.restEndpoint || config.rpcEndpoint,
-          bip44: {
-            coinType: 118,
-          },
-          bech32Config: {
-            bech32PrefixAccAddr: config.prefix,
-            bech32PrefixAccPub: `${config.prefix}pub`,
-            bech32PrefixValAddr: `${config.prefix}valoper`,
-            bech32PrefixValPub: `${config.prefix}valoperpub`,
-            bech32PrefixConsAddr: `${config.prefix}valcons`,
-            bech32PrefixConsPub: `${config.prefix}valconspub`,
-          },
-          currencies: [
-            {
-              coinDenom: config.tokenSymbol,
-              coinMinimalDenom: config.tokenDenom,
-              coinDecimals: 6,
-            },
-          ],
-          feeCurrencies: [
-            {
-              coinDenom: config.tokenSymbol,
-              coinMinimalDenom: config.tokenDenom,
-              coinDecimals: 6,
-              gasPriceStep: {
-                low: 0.01,
-                average: 0.025,
-                high: 0.04,
-              },
-            },
-          ],
-          stakeCurrency: {
-            coinDenom: config.tokenSymbol,
-            coinMinimalDenom: config.tokenDenom,
-            coinDecimals: 6,
-          },
-        });
-      } catch (suggestError) {
-        // Chain might already be added, continue
-        console.log('Chain already configured or user rejected');
-      }
-
-      // Enable Keplr for this chain
-      await window.keplr.enable(config.chainId);
-
-      // Get offline signer
-      const offlineSigner = window.keplr.getOfflineSigner(config.chainId);
-      const accounts = await offlineSigner.getAccounts();
-
-      if (accounts.length === 0) {
-        throw new Error('No accounts found');
-      }
-
-      const walletAddress = accounts[0].address;
-
-      // Create TREX client with signer
-      const client = await TrexClient.connectWithSigner(offlineSigner, walletAddress);
-
-      // Fetch native ZIG balance (for gas)
-      let nativeBal = '0';
-      try {
-        nativeBal = await client.getNativeBalance(walletAddress);
-      } catch (balError) {
-        console.error('Failed to fetch native balance:', balError);
-      }
-
-      // Update global state with NATIVE ZIG balance
-      setWalletState(walletAddress, client, nativeBal);
-
-      // Save to localStorage
-      localStorage.setItem('walletAddress', walletAddress);
-      localStorage.setItem('walletType', 'keplr');
-
-      toast.success(`Connected to ${walletAddress.slice(0, 10)}...${walletAddress.slice(-6)}`);
-
-      // Listen for account changes
-      window.addEventListener('keplr_keystorechange', handleAccountChange);
+      await connect();
     } catch (error: any) {
       console.error('Failed to connect to Keplr:', error);
       toast.error(error.message || 'Failed to connect wallet');
       setIsConnecting(false);
     }
-  }, []);
+  }, [connect, setIsConnecting]);
 
   /**
    * Connect to Leap wallet (alternative)
    */
   const connectLeap = useCallback(async () => {
-    if (!window.leap) {
-      toast.error('Leap wallet not found. Please install Leap extension.');
-      window.open('https://www.leapwallet.io/', '_blank');
-      return;
-    }
-
     try {
       setIsConnecting(true);
-      const config = getZigChainConfig();
-
-      await window.leap.enable(config.chainId);
-      const offlineSigner = window.leap.getOfflineSigner(config.chainId);
-      const accounts = await offlineSigner.getAccounts();
-
-      if (accounts.length === 0) {
-        throw new Error('No accounts found');
-      }
-
-      const walletAddress = accounts[0].address;
-
-      const client = await TrexClient.connectWithSigner(offlineSigner, walletAddress);
-
-      // Fetch native ZIG balance (for gas)
-      let nativeBal = '0';
-      try {
-        nativeBal = await client.getNativeBalance(walletAddress);
-      } catch (balError) {
-        console.error('Failed to fetch native balance:', balError);
-      }
-
-      // Update global state with NATIVE ZIG balance
-      setWalletState(walletAddress, client, nativeBal);
-
-      localStorage.setItem('walletAddress', walletAddress);
-      localStorage.setItem('walletType', 'leap');
-
-      toast.success(`Connected to ${walletAddress.slice(0, 10)}...${walletAddress.slice(-6)}`);
+      await connect();
     } catch (error: any) {
       console.error('Failed to connect to Leap:', error);
       toast.error(error.message || 'Failed to connect wallet');
       setIsConnecting(false);
     }
-  }, []);
+  }, [connect, setIsConnecting]);
 
   /**
    * Disconnect wallet
    */
   const disconnect = useCallback(() => {
+    disconnectWallet();
     clearWalletState();
-    localStorage.removeItem('walletAddress');
-    localStorage.removeItem('walletType');
-    window.removeEventListener('keplr_keystorechange', handleAccountChange);
     toast.info('Wallet disconnected');
-  }, [clearWalletState]);
-
-  /**
-   * Handle account change in Keplr
-   */
-  const handleAccountChange = useCallback(() => {
-    toast.info('Account changed. Please reconnect.');
-    disconnect();
-  }, [disconnect]);
+  }, [disconnectWallet, clearWalletState]);
 
   /**
    * Refresh balance
@@ -216,34 +92,154 @@ export function useWallet() {
    * Auto-connect on mount if previously connected
    */
   useEffect(() => {
-    // Only run if not already connected
-    if (address) return;
+    const hydrateWallet = async () => {
+      const hydrateKey = `${status}:${chainAddress || ''}`;
 
-    const savedAddress = localStorage.getItem('walletAddress');
-    const walletType = localStorage.getItem('walletType');
-
-    if (savedAddress && walletType) {
-      // Small delay to ensure page is loaded
-      const timer = setTimeout(() => {
-        // Auto-reconnect
-        if (walletType === 'keplr' && window.keplr) {
-          connectKeplr();
-        } else if (walletType === 'leap' && window.leap) {
-          connectLeap();
+      if (!chainAddress || status !== WalletStatus.Connected) {
+        if (sharedHydrationKey !== hydrateKey) {
+          sharedHydrationKey = hydrateKey;
+          clearWalletState();
         }
-      }, 500);
+        return;
+      }
 
-      return () => clearTimeout(timer);
-    }
-  }, []); // Empty deps - run only once on mount
+      if (address === chainAddress && trexClient && sharedHydrationKey === hydrateKey) {
+        return;
+      }
+
+      try {
+        setIsConnecting(true);
+
+        if (!sharedHydrationPromise) {
+          sharedHydrationPromise = (async () => {
+            const signer = getOfflineSigner?.();
+            if (!signer) {
+              throw new Error('Wallet signer not available');
+            }
+
+            const client = await TrexClient.connectWithSigner(
+              signer,
+              chainAddress
+            );
+            let nativeBal = '0';
+            try {
+              nativeBal = await client.getNativeBalance(chainAddress);
+            } catch (balError) {
+              console.error('Failed to fetch native balance:', balError);
+            }
+
+            // Fire-and-forget prefetch to reduce page loading delays
+            const normalizedWallet = chainAddress.toLowerCase();
+            const identityKey = `identity:${normalizedWallet}`;
+            const permissionsKey = `permissions:${normalizedWallet}:${TREX_CONTRACTS.token}`;
+            queryCache
+              .query(identityKey, () => client.getUserIdentity(chainAddress), 20_000)
+              .catch(() => null);
+            queryCache
+              .query(
+                permissionsKey,
+                async () => {
+                  const [
+                    factoryConfig,
+                    identityRegistryConfig,
+                    claimTopicsOwner,
+                    complianceConfig,
+                    tokenRoles,
+                    isAgent,
+                    issuerTopics,
+                  ] = await Promise.all([
+                    client.getFactoryConfig().catch(() => null),
+                    client.getIdentityRegistryConfig().catch(() => null),
+                    client.getClaimTopicsOwner().catch(() => null),
+                    client.getComplianceConfig().catch(() => null),
+                    client.getRoles(TREX_CONTRACTS.token).catch(() => null),
+                    client.isAgent(chainAddress, TREX_CONTRACTS.token).catch(() => false),
+                    client.getIssuerTopics(chainAddress).catch(() => null),
+                  ]);
+
+                  const isFactoryAdmin =
+                    !!factoryConfig &&
+                    factoryConfig.admin.toLowerCase() === normalizedWallet;
+                  const isIdentityRegistryOwner =
+                    !!identityRegistryConfig &&
+                    identityRegistryConfig.owner.toLowerCase() === normalizedWallet;
+                  const isClaimTopicsOwner =
+                    !!claimTopicsOwner &&
+                    claimTopicsOwner.toLowerCase() === normalizedWallet;
+                  const isComplianceOwner =
+                    !!(complianceConfig as ComplianceConfigResponse | null) &&
+                    (
+                      complianceConfig as ComplianceConfigResponse
+                    ).owner.toLowerCase() === normalizedWallet;
+                  const isTokenOwner =
+                    !!tokenRoles && tokenRoles.owner.toLowerCase() === normalizedWallet;
+                  const isTokenIssuer =
+                    !!tokenRoles && tokenRoles.issuer.toLowerCase() === normalizedWallet;
+                  const isTokenController =
+                    !!tokenRoles && tokenRoles.controller.toLowerCase() === normalizedWallet;
+                  const isTokenAgent = !!isAgent;
+                  const hasIssuerTopics = !!issuerTopics && issuerTopics.length > 0;
+                  const canKycProvider = !!issuerTopics && issuerTopics.includes(1);
+
+                  return {
+                    isFactoryAdmin,
+                    isIdentityRegistryOwner,
+                    isClaimTopicsOwner,
+                    isComplianceOwner,
+                    isTokenOwner,
+                    isTokenIssuer,
+                    isTokenController,
+                    isTokenAgent,
+                    isTrustedIssuer: hasIssuerTopics,
+                    canKycProvider,
+                  };
+                },
+                60_000,
+              )
+              .catch(() => null);
+
+            sharedHydrationKey = hydrateKey;
+            return {
+              address: chainAddress,
+              client,
+              balance: nativeBal,
+            };
+          })().finally(() => {
+            sharedHydrationPromise = null;
+          });
+        }
+
+        const hydrated = await sharedHydrationPromise;
+        if (hydrated) {
+          setWalletState(hydrated.address, hydrated.client, hydrated.balance);
+        }
+      } catch (error: any) {
+        console.error('Failed to initialize wallet:', error);
+        toast.error(error.message || 'Failed to initialize wallet');
+      } finally {
+        setIsConnecting(false);
+      }
+    };
+
+    hydrateWallet();
+  }, [
+    chainAddress,
+    address,
+    trexClient,
+    status,
+    getOfflineSigner,
+    setWalletState,
+    clearWalletState,
+    setIsConnecting,
+  ]);
 
   return {
     // State
     address,
-    isConnecting,
+    isConnecting: isConnecting || status === WalletStatus.Connecting,
     balance,
     trexClient,
-    isConnected,
+    isConnected: status === WalletStatus.Connected && !!address,
 
     // Actions
     connectKeplr,

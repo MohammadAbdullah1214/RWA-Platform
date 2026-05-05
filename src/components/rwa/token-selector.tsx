@@ -9,8 +9,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { useAssets } from '@/hooks/use-asets';
-import { useWallet } from '@/hooks/use-wallet';
+import { useAssetsContext } from '@/contexts/assets-context';
 
 interface TokenSelectorProps {
   selectedTokenContract: string | null;
@@ -19,8 +18,7 @@ interface TokenSelectorProps {
 }
 
 export function TokenSelector({ selectedTokenContract, onSelect, className }: TokenSelectorProps) {
-  const { address, trexClient } = useWallet();
-  const { assets, loading } = useAssets({ trexClient, walletAddress: address });
+  const { assets, loading } = useAssetsContext();
 
   return (
     <Select

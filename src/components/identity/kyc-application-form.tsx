@@ -18,10 +18,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FileText, Send, CheckCircle2 } from "lucide-react";
-import { submitApplication, type KycApplication } from "@/lib/kyc-storage";
+import {
+  createKycApplication,
+  type KycApplication,
+} from "@/lib/kyc-api";
 import { toast } from "sonner";
 
 interface KycApplicationFormProps {
@@ -36,11 +38,15 @@ export function KycApplicationForm({
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
+    nationality: "",
     country: "",
-    documentType: "passport" as const,
-    documentNumber: "",
     dateOfBirth: "",
-    address: "",
+    phoneNumber: "",
+    addressLine1: "",
+    addressLine2: "",
+    city: "",
+    state: "",
+    postalCode: "",
   });
 
   const [submitting, setSubmitting] = useState(false);
@@ -50,9 +56,19 @@ export function KycApplicationForm({
     setSubmitting(true);
 
     try {
-      const application = submitApplication({
-        wallet: walletAddress,
-        ...formData,
+      await createKycApplication({
+        walletAddress,
+        fullName: formData.fullName,
+        email: formData.email || undefined,
+        nationality: formData.nationality,
+        country: formData.country,
+        dateOfBirth: formData.dateOfBirth || undefined,
+        phoneNumber: formData.phoneNumber || undefined,
+        addressLine1: formData.addressLine1,
+        addressLine2: formData.addressLine2 || undefined,
+        city: formData.city,
+        state: formData.state || undefined,
+        postalCode: formData.postalCode,
       });
 
       toast.success("KYC Application Submitted!", {
@@ -106,8 +122,8 @@ export function KycApplicationForm({
               </span>
             </div>
 
-            {existingApplication.status === "approved" &&
-              existingApplication.onchainIdAddress && (
+              {existingApplication.status === "APPROVED" &&
+                existingApplication.onchainIdAddress && (
                 <>
                   <Alert className="bg-green-50 border-green-200">
                     <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -129,7 +145,7 @@ export function KycApplicationForm({
                 </>
               )}
 
-            {existingApplication.status === "rejected" && (
+            {existingApplication.status === "REJECTED" && (
               <Alert variant="destructive">
                 <AlertDescription>
                   <strong>Reason:</strong>{" "}
@@ -138,7 +154,7 @@ export function KycApplicationForm({
               </Alert>
             )}
 
-            {existingApplication.status === "pending" && (
+            {existingApplication.status === "PENDING" && (
               <Alert>
                 <AlertDescription>
                   Your application is being reviewed by our KYC provider. This
@@ -197,6 +213,35 @@ export function KycApplicationForm({
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="nationality">Nationality *</Label>
+              <Select
+                value={formData.nationality}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, nationality: value })
+                }
+                required
+              >
+                <SelectTrigger
+                  id="nationality"
+                  className="bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
+                >
+                  <SelectValue placeholder="Select nationality" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="US">United States</SelectItem>
+                  <SelectItem value="GB">United Kingdom</SelectItem>
+                  <SelectItem value="CA">Canada</SelectItem>
+                  <SelectItem value="AU">Australia</SelectItem>
+                  <SelectItem value="DE">Germany</SelectItem>
+                  <SelectItem value="FR">France</SelectItem>
+                  <SelectItem value="JP">Japan</SelectItem>
+                  <SelectItem value="SG">Singapore</SelectItem>
+                  <SelectItem value="AE">UAE</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="country">Country of Residence *</Label>
               <Select
                 value={formData.country}
@@ -240,66 +285,90 @@ export function KycApplicationForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="documentType">ID Document Type *</Label>
-              <Select
-                value={formData.documentType}
-                onValueChange={(value: any) =>
-                  setFormData({ ...formData, documentType: value })
-                }
-                required
-              >
-                <SelectTrigger
-                  id="documentType"
-                  className="bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="passport">Passport</SelectItem>
-                  <SelectItem value="drivers_license">
-                    Driver's License
-                  </SelectItem>
-                  <SelectItem value="national_id">National ID Card</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="documentNumber">Document Number *</Label>
+              <Label htmlFor="phoneNumber">Phone Number</Label>
               <Input
-                id="documentNumber"
-                required
-                value={formData.documentNumber}
+                id="phoneNumber"
+                value={formData.phoneNumber}
                 onChange={(e) =>
-                  setFormData({ ...formData, documentNumber: e.target.value })
+                  setFormData({ ...formData, phoneNumber: e.target.value })
                 }
-                placeholder="ABC123456"
+                placeholder="+1 555 123 4567"
                 className="bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
               />
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="address">Residential Address *</Label>
-            <Textarea
-              id="address"
-              required
-              value={formData.address}
-              onChange={(e) =>
-                setFormData({ ...formData, address: e.target.value })
-              }
-              placeholder="123 Main St, Apt 4B, New York, NY 10001"
-              rows={3}
-              className="bg-gray-50 border-gray-200 focus:bg-white transition-colors resize-none"
-            />
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="addressLine1">Address Line 1 *</Label>
+              <Input
+                id="addressLine1"
+                required
+                value={formData.addressLine1}
+                onChange={(e) =>
+                  setFormData({ ...formData, addressLine1: e.target.value })
+                }
+                placeholder="123 Main St"
+                className="bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="addressLine2">Address Line 2</Label>
+              <Input
+                id="addressLine2"
+                value={formData.addressLine2}
+                onChange={(e) =>
+                  setFormData({ ...formData, addressLine2: e.target.value })
+                }
+                placeholder="Apt 4B"
+                className="bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="city">City *</Label>
+              <Input
+                id="city"
+                required
+                value={formData.city}
+                onChange={(e) =>
+                  setFormData({ ...formData, city: e.target.value })
+                }
+                placeholder="New York"
+                className="bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="state">State/Province</Label>
+              <Input
+                id="state"
+                value={formData.state}
+                onChange={(e) =>
+                  setFormData({ ...formData, state: e.target.value })
+                }
+                placeholder="NY"
+                className="bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="postalCode">Postal Code *</Label>
+              <Input
+                id="postalCode"
+                required
+                value={formData.postalCode}
+                onChange={(e) =>
+                  setFormData({ ...formData, postalCode: e.target.value })
+                }
+                placeholder="10001"
+                className="bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
+              />
+            </div>
           </div>
 
           <Alert>
             <AlertDescription className="text-sm">
               <strong>Note:</strong> In a production environment, you would
               upload scanned copies of your identity documents. For this demo,
-              we're collecting basic information only. Your data is stored
-              locally.
+              we're collecting basic information only.
             </AlertDescription>
           </Alert>
 

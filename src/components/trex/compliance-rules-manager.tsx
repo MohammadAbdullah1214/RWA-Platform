@@ -36,6 +36,7 @@ import {
   Info,
 } from "lucide-react";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/backend";
 
 interface ComplianceRulesManagerProps {
   onUpdate?: () => void;
@@ -81,10 +82,18 @@ export function ComplianceRulesManager({
   const [limitAddress, setLimitAddress] = useState("");
   const [limitAmount, setLimitAmount] = useState("");
   const [limitEnabled, setLimitEnabled] = useState(true);
+  const [countryReason, setCountryReason] = useState("");
+  const [limitReason, setLimitReason] = useState("");
 
   const handleSetCountryRestrictions = async () => {
     if (!trexClient) {
       toast.error("Please connect your wallet");
+      return;
+    }
+    if (!countryReason.trim()) {
+      toast.error("Reason required", {
+        description: "Please provide a reason for this compliance change.",
+      });
       return;
     }
 
@@ -94,6 +103,14 @@ export function ComplianceRulesManager({
 
       const countries = allCountriesAllowed ? undefined : selectedCountries;
       const txHash = await trexClient.setAllowedCountries(countries);
+      await apiFetch("/compliance-rules/countries", {
+        method: "POST",
+        body: JSON.stringify({
+          allowedCountries: countries ?? [],
+          reason: countryReason.trim(),
+          txHash,
+        }),
+      });
 
       toast.dismiss();
       toast.success("Country restrictions updated", {
@@ -105,6 +122,7 @@ export function ComplianceRulesManager({
       });
 
       onUpdate?.();
+      setCountryReason("");
     } catch (error: any) {
       toast.dismiss();
       console.error("Set country restrictions failed:", error);
@@ -143,6 +161,12 @@ export function ComplianceRulesManager({
       });
       return;
     }
+    if (!limitReason.trim()) {
+      toast.error("Reason required", {
+        description: "Please provide a reason for this compliance change.",
+      });
+      return;
+    }
 
     try {
       setLoading(true);
@@ -153,6 +177,15 @@ export function ComplianceRulesManager({
         limitAddress,
         limit
       );
+      await apiFetch("/compliance-rules/transfer-limits", {
+        method: "POST",
+        body: JSON.stringify({
+          address: limitAddress,
+          limit,
+          reason: limitReason.trim(),
+          txHash,
+        }),
+      });
 
       toast.dismiss();
       toast.success("Transfer limit set", {
@@ -165,6 +198,7 @@ export function ComplianceRulesManager({
       setLimitAddress("");
       setLimitAmount("");
       setLimitEnabled(true);
+      setLimitReason("");
 
       onUpdate?.();
     } catch (error: any) {
@@ -206,19 +240,19 @@ export function ComplianceRulesManager({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
-      <Card className="bg-white rounded-2xl shadow-sm border border-gray-100">
+      <Card className="glass-panel rounded-2xl border border-slate-200/70 shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl">
-            <Shield className="h-6 w-6 text-blue-500" />
+            <Shield className="h-6 w-6 text-[#2A5FA6]" />
             Compliance Rules
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-slate-600">
             Configure country restrictions and per-address transfer limits
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="countries" className="w-full">
-            <TabsList className="w-fit grid grid-cols-2 p-1 rounded-xl h-auto">
+            <TabsList className="w-fit grid grid-cols-2 p-1 rounded-xl h-auto bg-slate-100/70">
               <TabsTrigger
                 value="countries"
                 className="rounded-lg data-[state=active]:bg-gradient-to-tr data-[state=active]:from-[#172E7F] data-[state=active]:to-[#2A5FA6] data-[state=active]:text-white transition-all py-1.5 text-sm"
@@ -235,7 +269,7 @@ export function ComplianceRulesManager({
 
             {/* Country Restrictions Tab */}
             <TabsContent value="countries" className="space-y-4">
-              <Alert>
+              <Alert className="border-slate-200/70 bg-slate-50/80">
                 <Globe className="h-4 w-4" />
                 <AlertDescription>
                   Whitelist countries that are allowed to hold and transfer
@@ -276,17 +310,17 @@ export function ComplianceRulesManager({
                       </Button>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-[400px] overflow-y-auto p-4 border rounded-lg">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-[400px] overflow-y-auto p-4 border border-slate-200/70 rounded-xl bg-white/70">
                       {COMMON_COUNTRIES.map((country) => (
                         <button
                           key={country.code}
                           onClick={() => toggleCountry(country.code)}
                           className={`
-                            p-3 rounded-md border transition-all text-left
+                            p-3 rounded-lg border transition-all text-left
                             ${
                               selectedCountries.includes(country.code)
-                                ? "bg-blue-50 border-blue-500 dark:bg-blue-950"
-                                : "bg-white hover:bg-gray-50 border-gray-200 dark:bg-gray-900"
+                                ? "bg-blue-50 border-blue-400/70"
+                                : "bg-white/80 hover:bg-white border-slate-200/80"
                             }
                           `}
                         >
@@ -294,7 +328,7 @@ export function ComplianceRulesManager({
                             {selectedCountries.includes(country.code) ? (
                               <CheckCircle2 className="h-4 w-4 text-blue-500" />
                             ) : (
-                              <div className="h-4 w-4 border rounded-full border-gray-300" />
+                              <div className="h-4 w-4 border rounded-full border-slate-300" />
                             )}
                             <div>
                               <div className="font-medium text-sm">
@@ -310,7 +344,7 @@ export function ComplianceRulesManager({
                     </div>
 
                     {selectedCountries.length > 0 && (
-                      <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200">
+                      <Alert className="bg-blue-50/80 border-blue-200/70">
                         <Info className="h-4 w-4 text-blue-500" />
                         <AlertDescription>
                           <strong>
@@ -339,18 +373,29 @@ export function ComplianceRulesManager({
                       )}
                     </Button>
                   </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Confirm Country Restrictions</DialogTitle>
-                      <DialogDescription>
-                        This will update the compliance contract to enforce
-                        country-based transfer restrictions.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      {allCountriesAllowed ? (
-                        <Alert className="bg-green-50 dark:bg-green-950 border-green-200">
-                          <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    <DialogContent className="rounded-2xl border-slate-200/70">
+                      <DialogHeader>
+                        <DialogTitle>Confirm Country Restrictions</DialogTitle>
+                    <DialogDescription>
+                      This will update the compliance contract to enforce
+                      country-based transfer restrictions.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="country-reason">Reason (required)</Label>
+                      <Input
+                        id="country-reason"
+                        value={countryReason}
+                        onChange={(e) => setCountryReason(e.target.value)}
+                        placeholder="e.g. Updated regulatory guidance"
+                        className="bg-white/80 border-slate-200/70 focus:bg-white"
+                        disabled={loading}
+                      />
+                    </div>
+                    {allCountriesAllowed ? (
+                      <Alert className="bg-green-50/80 border-green-200/70">
+                        <CheckCircle2 className="h-4 w-4 text-green-500" />
                           <AlertDescription>
                             <strong>All countries allowed</strong> - No
                             restrictions will be enforced
@@ -358,7 +403,7 @@ export function ComplianceRulesManager({
                         </Alert>
                       ) : (
                         <>
-                          <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200">
+                          <Alert className="bg-blue-50/80 border-blue-200/70">
                             <Info className="h-4 w-4 text-blue-500" />
                             <AlertDescription>
                               <strong>Whitelist mode:</strong> Only{" "}
@@ -366,7 +411,7 @@ export function ComplianceRulesManager({
                               allowed
                             </AlertDescription>
                           </Alert>
-                          <div className="max-h-[200px] overflow-y-auto">
+                          <div className="max-h-50 overflow-y-auto">
                             <div className="flex flex-wrap gap-2">
                               {selectedCountries.map((code) => (
                                 <Badge key={code} variant="secondary">
@@ -377,7 +422,7 @@ export function ComplianceRulesManager({
                           </div>
                         </>
                       )}
-                      <Alert variant="destructive">
+                      <Alert variant="destructive" className="border-red-200/70 bg-red-50/80">
                         <AlertTriangle className="h-4 w-4" />
                         <AlertDescription>
                           <strong>Warning:</strong> Users from restricted
@@ -408,7 +453,7 @@ export function ComplianceRulesManager({
 
             {/* Transfer Limits Tab */}
             <TabsContent value="limits" className="space-y-4">
-              <Alert>
+              <Alert className="border-slate-200/70 bg-slate-50/80">
                 <TrendingUp className="h-4 w-4" />
                 <AlertDescription>
                   Set per-address transfer limits to restrict the maximum amount
@@ -425,7 +470,7 @@ export function ComplianceRulesManager({
                     onChange={(e) => setLimitAddress(e.target.value)}
                     placeholder="zig1..."
                     disabled={loading}
-                    className="bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
+                    className="bg-white/80 border-slate-200/70 focus:bg-white transition-colors h-11"
                   />
                 </div>
 
@@ -453,7 +498,7 @@ export function ComplianceRulesManager({
                       onChange={(e) => setLimitAmount(e.target.value)}
                       placeholder="1000000"
                       disabled={loading}
-                      className="bg-gray-50 border-gray-200 focus:bg-white transition-colors h-11"
+                      className="bg-white/80 border-slate-200/70 focus:bg-white transition-colors h-11"
                     />
                     <p className="text-xs text-muted-foreground">
                       Enter amount in smallest unit (e.g., 1000000 = 1 token
@@ -462,8 +507,20 @@ export function ComplianceRulesManager({
                   </div>
                 )}
 
+                <div className="space-y-2">
+                  <Label htmlFor="limit-reason">Reason (required)</Label>
+                  <Input
+                    id="limit-reason"
+                    value={limitReason}
+                    onChange={(e) => setLimitReason(e.target.value)}
+                    placeholder="e.g. Risk control threshold"
+                    disabled={loading}
+                    className="bg-white/80 border-slate-200/70 focus:bg-white transition-colors h-11"
+                  />
+                </div>
+
                 {!limitEnabled && (
-                  <Alert className="bg-amber-50 dark:bg-amber-950 border-amber-200">
+                  <Alert className="bg-amber-50/80 border-amber-200/70">
                     <AlertTriangle className="h-4 w-4 text-amber-500" />
                     <AlertDescription>
                       Disabling the limit will allow unlimited transfers for
@@ -475,7 +532,7 @@ export function ComplianceRulesManager({
                 <Button
                   onClick={handleSetTransferLimit}
                   disabled={loading || !limitAddress}
-                  className="w-full bg-gradient-to-tr from-[#172E7F] to-[#2A5FA6] hover:opacity-90 transition-opacity"
+                  className="w-full bg-linear-to-tr from-[#172E7F] to-[#2A5FA6] hover:opacity-90 transition-opacity"
                 >
                   {loading ? (
                     <>
@@ -492,7 +549,7 @@ export function ComplianceRulesManager({
                   )}
                 </Button>
 
-                <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200">
+                <Alert className="bg-blue-50/80 border-blue-200/70">
                   <Info className="h-4 w-4 text-blue-500" />
                   <AlertDescription>
                     <strong>Note:</strong> Transfer limits are enforced by the
