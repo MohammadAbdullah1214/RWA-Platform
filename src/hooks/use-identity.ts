@@ -1,6 +1,8 @@
 'use client';
 
-import { useIdentityContext } from '@/contexts/identity-context';
+import { useIdentityContext, type IdentityClaim, type UserIdentity } from '@/contexts/identity-context';
+
+export { type IdentityClaim, type UserIdentity };
 
 export function useIdentity() {
   return useIdentityContext();

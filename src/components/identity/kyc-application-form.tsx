@@ -104,9 +104,9 @@ export function KycApplicationForm({
               <span className="text-sm text-muted-foreground">Status</span>
               <span
                 className={`text-sm font-medium ${
-                  existingApplication.status === "approved"
+                  existingApplication.status === "APPROVED"
                     ? "text-green-600"
-                    : existingApplication.status === "rejected"
+                    : existingApplication.status === "REJECTED"
                     ? "text-red-600"
                     : "text-yellow-600"
                 }`}
